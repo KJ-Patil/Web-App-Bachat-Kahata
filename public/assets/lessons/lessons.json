@@ -1,0 +1,98 @@
+[
+  {
+    "id": "l1",
+    "title": "Understanding CIBIL Scores",
+    "theme": "Credit Health",
+    "content": "Your CIBIL score is a 3-digit numeric summary of your credit history, ranging from 300 to 900. It is derived from your credit report. A score closer to 900 indicates strong financial health and makes you highly eligible for loans and credit cards at favorable interest rates. Key factors include Payment History (35%), Credit Utilization (30%), Age of Credit (15%), Credit Mix (10%), and Recent Inquiries (10%). Maintaining utilization below 30% and never missing a payment are the best ways to keep it high.",
+    "quiz": [
+      {
+        "question": "What is the optimal credit utilization ratio?",
+        "options": ["Below 30%", "Exactly 50%", "100%", "Doesn't matter"],
+        "answerIndex": 0
+      },
+      {
+        "question": "Which factor impacts your CIBIL score the most?",
+        "options": ["Age of Credit", "Payment History", "Credit Mix", "Recent Inquiries"],
+        "answerIndex": 1
+      },
+      {
+        "question": "What is a good CIBIL score range?",
+        "options": ["300-400", "500-600", "750-900", "100-200"],
+        "answerIndex": 2
+      }
+    ],
+    "reward": "Credit Guru Badge"
+  },
+  {
+    "id": "l2",
+    "title": "The Magic of Compounding",
+    "theme": "Investing",
+    "content": "Compound interest is the addition of interest to the principal sum of a loan or deposit, or in other words, interest on interest. It is the result of reinvesting interest, rather than paying it out, so that interest in the next period is then earned on the principal sum plus previously accumulated interest. Time is the most crucial variable in the compounding formula. Starting early, even with small amounts, yields exponentially larger results than starting late with larger amounts.",
+    "quiz": [
+      {
+        "question": "What does compound interest essentially mean?",
+        "options": ["Interest on principal only", "Interest on interest", "Fixed yearly return", "Tax-free growth"],
+        "answerIndex": 1
+      },
+      {
+        "question": "What is the most crucial factor in compounding?",
+        "options": ["The Bank", "Time", "The starting amount", "The inflation rate"],
+        "answerIndex": 1
+      },
+      {
+        "question": "Who benefits most from compounding?",
+        "options": ["Someone who starts investing early", "Someone who invests a lot for a short time", "Banks only", "Day traders"],
+        "answerIndex": 0
+      }
+    ],
+    "reward": "Time Lord Badge"
+  },
+  {
+    "id": "l3",
+    "title": "Decoding EMI Math",
+    "theme": "Debt Management",
+    "content": "Equated Monthly Installment (EMI) is a fixed payment amount made by a borrower to a lender at a specified date each calendar month. EMIs are used to pay off both interest and principal each month so that over a specified number of years, the loan is paid off in full. In the early years of a loan, a larger portion of the EMI goes towards paying the interest. Towards the end of the loan tenure, the principal repayment forms a larger portion of the EMI.",
+    "quiz": [
+      {
+        "question": "What does EMI stand for?",
+        "options": ["Equated Monthly Interest", "Equated Monthly Installment", "Early Monthly Investment", "Equal Money Input"],
+        "answerIndex": 1
+      },
+      {
+        "question": "In the early years of a loan, your EMI primarily pays off:",
+        "options": ["The Principal", "The Interest", "Taxes", "Insurance"],
+        "answerIndex": 1
+      },
+      {
+        "question": "Does EMI change every month in a fixed-rate loan?",
+        "options": ["Yes, it decreases", "Yes, it increases", "No, it remains constant", "It depends on the bank"],
+        "answerIndex": 2
+      }
+    ],
+    "reward": "Math Wizard Badge"
+  },
+  {
+    "id": "l4",
+    "title": "Inflation: The Silent Tax",
+    "theme": "Macro Economics",
+    "content": "Inflation is the rate at which the general level of prices for goods and services is rising and, consequently, the purchasing power of currency is falling. If your savings are growing at 4% in a bank account, but inflation is 6%, your real wealth is actually decreasing by 2% every year. To protect against inflation, you must invest in assets that historically outpace the inflation rate, such as equities or real estate, rather than leaving cash under the mattress.",
+    "quiz": [
+      {
+        "question": "What happens to purchasing power during high inflation?",
+        "options": ["It increases", "It stays the same", "It decreases", "It doubles"],
+        "answerIndex": 2
+      },
+      {
+        "question": "If inflation is 6% and your savings earn 4%, what is your real return?",
+        "options": ["10%", "2%", "-2%", "4%"],
+        "answerIndex": 2
+      },
+      {
+        "question": "Which of these is generally a better hedge against long-term inflation?",
+        "options": ["Keeping cash at home", "Equities (Stocks)", "A 0% interest checking account", "Gift cards"],
+        "answerIndex": 1
+      }
+    ],
+    "reward": "Value Protector Badge"
+  }
+]

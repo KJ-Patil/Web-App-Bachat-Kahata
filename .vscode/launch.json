@@ -1,0 +1,105 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "🚀 Next.js: Debug Full Stack (Port 3001)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "-p", "3001"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "serverReadyAction": {
+        "action": "startDebugging",
+        "pattern": "local (http://localhost:\\d+|https://localhost:\\d+)",
+        "name": "🌐 Next.js: Debug Client-side (Port 3001)"
+      },
+      "presentation": {
+        "hidden": false,
+        "group": "Next.js Debugging",
+        "order": 1
+      }
+    },
+    {
+      "name": "🚀 Next.js: Debug Full Stack (Port 3000)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "serverReadyAction": {
+        "action": "startDebugging",
+        "pattern": "local (http://localhost:\\d+|https://localhost:\\d+)",
+        "name": "🌐 Next.js: Debug Client-side (Port 3000)"
+      },
+      "presentation": {
+        "hidden": false,
+        "group": "Next.js Debugging",
+        "order": 2
+      }
+    },
+    {
+      "name": "🖥️ Next.js: Debug Server-side (Port 3001)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "-p", "3001"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "local (http://localhost:\\d+|https://localhost:\\d+)",
+        "uriFormat": "%s"
+      },
+      "presentation": {
+        "hidden": false,
+        "group": "Next.js Debugging",
+        "order": 3
+      }
+    },
+    {
+      "name": "🖥️ Next.js: Debug Server-side (Port 3000)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "local (http://localhost:\\d+|https://localhost:\\d+)",
+        "uriFormat": "%s"
+      },
+      "presentation": {
+        "hidden": false,
+        "group": "Next.js Debugging",
+        "order": 4
+      }
+    },
+    {
+      "name": "🌐 Next.js: Debug Client-side (Port 3001)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:3001",
+      "webRoot": "${workspaceFolder}",
+      "presentation": {
+        "hidden": false,
+        "group": "Next.js Debugging",
+        "order": 5
+      }
+    },
+    {
+      "name": "🌐 Next.js: Debug Client-side (Port 3000)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:3000",
+      "webRoot": "${workspaceFolder}",
+      "presentation": {
+        "hidden": false,
+        "group": "Next.js Debugging",
+        "order": 6
+      }
+    }
+  ]
+}

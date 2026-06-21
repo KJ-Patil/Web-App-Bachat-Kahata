@@ -1,0 +1,551 @@
+"use client";
+
+import React, { useState, useEffect, use } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  ArrowDownRight,
+  Phone,
+  Calendar,
+  Save,
+  X,
+  MessageSquare,
+  Hash,
+  FileText,
+  Trash2,
+  AlertTriangle,
+} from "lucide-react";
+import { formatAmount } from "@/core/utils/currencyManager";
+import { Customer, LedgerEntry } from "../page";
+
+export default function CustomerLedgerPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const router = useRouter();
+  const resolvedParams = use(params);
+  const customerId = resolvedParams.id;
+
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [activeCurrency, setActiveCurrency] = useState("INR");
+  const [loading, setLoading] = useState(true);
+
+  // Flow logs variables
+  const [isEntryOpen, setIsEntryOpen] = useState(false);
+  const [entryType, setEntryType] = useState<"gave" | "got">("gave");
+  const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
+
+  // Delete confirmation
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadCustomerDetails();
+  }, [customerId]);
+
+  const loadCustomerDetails = () => {
+    if (typeof window === "undefined") return;
+    setLoading(true);
+
+    const cur = localStorage.getItem("active_currency");
+    if (cur) setActiveCurrency(cur);
+
+    const stored = localStorage.getItem("ledger_customers");
+    if (stored) {
+      const customersList: Customer[] = JSON.parse(stored);
+      const found = customersList.find((c) => c.id === customerId);
+      if (found) {
+        setCustomer(found);
+      } else {
+        router.push("/ledger");
+      }
+    } else {
+      router.push("/ledger");
+    }
+    setLoading(false);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-background">
+        <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+      </div>
+    );
+  }
+
+  if (!customer) return null;
+
+  const handleAddEntry = (e: React.FormEvent) => {
+    e.preventDefault();
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0) return;
+
+    // Load active lists
+    const stored = localStorage.getItem("ledger_customers");
+    if (!stored) return;
+
+    const customersList: Customer[] = JSON.parse(stored);
+
+    // Calculate new balance
+    // Gave: we gave goods/money, they owe us more (increases balance)
+    // Got: we got payment/money, they owe us less (decreases balance)
+    const balanceAdjustment = entryType === "gave" ? numAmount : -numAmount;
+    const nextBalance = customer.balance + balanceAdjustment;
+
+    const newLog: LedgerEntry = {
+      id: Math.random().toString(36).substring(2, 9),
+      amount: numAmount,
+      type: entryType,
+      description:
+        description || (entryType === "gave" ? "Gave credit" : "Got payment"),
+      date: new Date().toISOString(),
+    };
+
+    const updatedCust: Customer = {
+      ...customer,
+      balance: nextBalance,
+      history: [newLog, ...customer.history],
+    };
+
+    const updatedList = customersList.map((c) =>
+      c.id === customer.id ? updatedCust : c
+    );
+    localStorage.setItem("ledger_customers", JSON.stringify(updatedList));
+    setCustomer(updatedCust);
+
+    // Also update overall transaction buffers for cash index tracking
+    const storedTxs = localStorage.getItem("transactions");
+    const transactions = storedTxs ? JSON.parse(storedTxs) : [];
+
+    const newTx = {
+      id: Math.random().toString(36).substring(2, 9),
+      amount: numAmount,
+      type: entryType === "gave" ? "expense" : "income",
+      category: "Housing",
+      description: `${entryType === "gave" ? "Gave to" : "Got from"} ${customer.name}: ${newLog.description}`,
+      date: new Date().toISOString(),
+    };
+    localStorage.setItem(
+      "transactions",
+      JSON.stringify([newTx, ...transactions])
+    );
+
+    // Clear state
+    setAmount("");
+    setDescription("");
+    setIsEntryOpen(false);
+  };
+
+  const handleDeleteEntry = (entryId: string) => {
+    const stored = localStorage.getItem("ledger_customers");
+    if (!stored) return;
+
+    const customersList: Customer[] = JSON.parse(stored);
+    const entry = customer.history.find((h) => h.id === entryId);
+    if (!entry) return;
+
+    // Reverse the balance effect
+    const balanceReverse = entry.type === "gave" ? -entry.amount : entry.amount;
+    const nextBalance = customer.balance + balanceReverse;
+
+    const updatedCust: Customer = {
+      ...customer,
+      balance: nextBalance,
+      history: customer.history.filter((h) => h.id !== entryId),
+    };
+
+    const updatedList = customersList.map((c) =>
+      c.id === customer.id ? updatedCust : c
+    );
+    localStorage.setItem("ledger_customers", JSON.stringify(updatedList));
+    setCustomer(updatedCust);
+    setDeleteConfirmId(null);
+  };
+
+  const handleOpenForm = (type: "gave" | "got") => {
+    setEntryType(type);
+    setIsEntryOpen(true);
+  };
+
+  const absBal = Math.abs(customer.balance);
+  const isCredit = customer.balance > 0;
+  const isDebit = customer.balance < 0;
+  const isSettled = customer.balance === 0;
+
+  // Compute running balance for each history entry (newest first)
+  const historyWithRunning = (() => {
+    let running = customer.balance;
+    return customer.history.map((entry, i) => {
+      const currentRunning = running;
+      // Walk backwards: undo the effect to get previous running balance
+      if (i < customer.history.length - 1) {
+        running =
+          entry.type === "gave"
+            ? running - entry.amount
+            : running + entry.amount;
+      }
+      return { ...entry, runningBalance: currentRunning };
+    });
+  })();
+
+  // WhatsApp reconciliation link
+  const getWhatsAppLink = () => {
+    const balanceStr = formatAmount(absBal, activeCurrency);
+    const message = isCredit
+      ? `Dear ${customer.name}, a friendly reminder regarding your pending balance of ${balanceStr} on Bachat Khata. Please review and reconcile at your earliest convenience. Thank you!`
+      : `Dear ${customer.name}, this is a payment reconciliation notice from Bachat Khata. Your pending supplier balance of ${balanceStr} is being processed. Thank you for your continued partnership!`;
+
+    return `https://wa.me/${customer.phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(message)}`;
+  };
+
+  // Stats
+  const totalGave = customer.history
+    .filter((h) => h.type === "gave")
+    .reduce((s, h) => s + h.amount, 0);
+  const totalGot = customer.history
+    .filter((h) => h.type === "got")
+    .reduce((s, h) => s + h.amount, 0);
+
+  return (
+    <div className="flex-1 flex flex-col p-6 space-y-6 md:p-8 max-w-4xl mx-auto w-full">
+      {/* ────────────────── NAVIGATION HEADER ────────────────── */}
+      <header className="flex justify-between items-center bg-card border border-border p-4 rounded-2xl shadow-sm">
+        <Link
+          href="/ledger"
+          className="flex items-center gap-2 text-xs font-bold text-foreground-secondary hover:text-primary transition-all cursor-pointer"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Customer Notebooks
+        </Link>
+
+        <div className="flex items-center gap-2">
+          <span
+            className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-md ${
+              customer.type === "customer"
+                ? "bg-primary-lighter text-primary"
+                : "bg-brand-light text-brand"
+            }`}
+          >
+            {customer.type}
+          </span>
+          <span className="text-[10px] font-bold text-foreground-muted flex items-center gap-1">
+            <Hash className="w-3 h-3" />
+            {customer.id}
+          </span>
+        </div>
+      </header>
+
+      {/* ────────────────── CUSTOMER BALANCE CARD ────────────────── */}
+      <section
+        className={`border p-6 rounded-2xl shadow-sm flex flex-col sm:flex-row sm:justify-between sm:items-center gap-5 ${
+          isCredit
+            ? "bg-success-light/30 border-success/20"
+            : isDebit
+              ? "bg-error-light/30 border-error/20"
+              : "bg-card border-border"
+        }`}
+      >
+        <div className="space-y-1.5">
+          <h2 className="text-2xl font-black text-foreground">
+            {customer.name}
+          </h2>
+          <span className="text-xs font-semibold text-foreground-secondary flex items-center gap-1.5">
+            <Phone className="w-3.5 h-3.5 text-icon-muted" />
+            {customer.phone}
+          </span>
+        </div>
+
+        <div className="text-left sm:text-right space-y-1">
+          <span
+            className={`text-3xl font-black tracking-tight ${
+              isCredit
+                ? "text-success"
+                : isDebit
+                  ? "text-error"
+                  : "text-foreground-secondary"
+            }`}
+          >
+            {isSettled ? "₹ 0" : formatAmount(absBal, activeCurrency)}
+          </span>
+          <span className="text-[10px] font-bold uppercase tracking-wider block text-foreground-muted">
+            {isCredit
+              ? "Net Credit (You will get)"
+              : isDebit
+                ? "Net Debit (You will give)"
+                : "Settled Balance"}
+          </span>
+        </div>
+      </section>
+
+      {/* ────────────────── TRANSACTION TOTALS STRIP ────────────────── */}
+      <section className="grid grid-cols-2 gap-4">
+        <div className="bg-card border border-border p-4 rounded-xl shadow-sm flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-success-light text-success flex items-center justify-center shrink-0 border border-success/10">
+            <ArrowUpRight className="w-4 h-4 stroke-[2.5px]" />
+          </div>
+          <div>
+            <span className="text-[9px] font-bold text-foreground-muted uppercase tracking-wider block">
+              Total Given
+            </span>
+            <span className="text-lg font-black text-success tracking-tight">
+              {formatAmount(totalGave, activeCurrency)}
+            </span>
+          </div>
+        </div>
+        <div className="bg-card border border-border p-4 rounded-xl shadow-sm flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-error-light text-error flex items-center justify-center shrink-0 border border-error/10">
+            <ArrowDownRight className="w-4 h-4 stroke-[2.5px]" />
+          </div>
+          <div>
+            <span className="text-[9px] font-bold text-foreground-muted uppercase tracking-wider block">
+              Total Received
+            </span>
+            <span className="text-lg font-black text-error tracking-tight">
+              {formatAmount(totalGot, activeCurrency)}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {/* ────────────────── QUICK BOOK ENTRIES (GAVE / GOT) + WHATSAPP ────────────────── */}
+      <section className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <button
+          onClick={() => handleOpenForm("gave")}
+          className="py-4 rounded-2xl bg-success text-success-foreground border border-success hover:brightness-110 text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.98]"
+        >
+          <ArrowUpRight className="w-5 h-5 stroke-[2.5px]" />
+          You Gave
+        </button>
+
+        <button
+          onClick={() => handleOpenForm("got")}
+          className="py-4 rounded-2xl bg-error text-error-foreground border border-error hover:brightness-110 text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.98]"
+        >
+          <ArrowDownRight className="w-5 h-5 stroke-[2.5px]" />
+          You Got
+        </button>
+
+        {/* WhatsApp Quick Action */}
+        {!isSettled && (
+          <a
+            href={getWhatsAppLink()}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="py-4 rounded-2xl bg-card border-2 border-dashed border-success/40 text-success hover:bg-success-light hover:border-success text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer col-span-2 sm:col-span-1"
+          >
+            <MessageSquare className="w-5 h-5 stroke-[2.5px]" />
+            WhatsApp Reminder
+          </a>
+        )}
+      </section>
+
+      {/* ────────────────── ENTRY SUB-FORM (INLINE OVERLAY) ────────────────── */}
+      {isEntryOpen && (
+        <div className="bg-card border border-border p-5 rounded-2xl shadow-md space-y-4 animate-in slide-in-from-top duration-200">
+          <div className="flex justify-between items-center border-b border-border pb-3">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-foreground flex items-center gap-1.5">
+              <FileText className="w-4 h-4 text-icon-muted" />
+              New Ledger Entry:{" "}
+              <span
+                className={`px-2.5 py-0.5 rounded-md text-[10px] uppercase ${
+                  entryType === "gave"
+                    ? "bg-success-light text-success"
+                    : "bg-error-light text-error"
+                }`}
+              >
+                {entryType === "gave" ? "Gave credit" : "Got payment"}
+              </span>
+            </h3>
+            <button
+              onClick={() => setIsEntryOpen(false)}
+              className="text-icon-muted hover:text-foreground p-1.5 rounded-lg hover:bg-secondary transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <form
+            onSubmit={handleAddEntry}
+            className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end"
+          >
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider">
+                Value Amount ({activeCurrency})
+              </label>
+              <input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="input-base w-full text-sm font-bold"
+                placeholder="0.00"
+                min="0.01"
+                step="0.01"
+                required
+                autoFocus
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider">
+                Ledger Narrative
+              </label>
+              <input
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="input-base w-full text-sm"
+                placeholder="e.g. Credit sale invoice"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="btn-primary w-full flex items-center justify-center gap-2 h-[42px]"
+            >
+              <Save className="w-4 h-4" />
+              Save Record
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* ────────────────── RUNNING LEDGER ROW HISTORY ────────────────── */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-xs font-bold text-foreground-secondary uppercase tracking-widest">
+            Ledger Sheet History
+          </h3>
+          <span className="text-[10px] font-bold text-foreground-muted">
+            {customer.history.length} entries
+          </span>
+        </div>
+
+        {customer.history.length === 0 ? (
+          <div className="bg-card border border-border rounded-2xl p-12 text-center text-foreground-muted text-sm shadow-sm space-y-2">
+            <FileText className="w-8 h-8 text-icon-muted mx-auto" />
+            <p className="font-semibold">
+              No entries registered in this notebook sheet yet.
+            </p>
+            <p className="text-xs">
+              Use the Gave / Got buttons above to start recording.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {historyWithRunning.map((entry) => {
+              const isGave = entry.type === "gave";
+              const isRunningPositive = entry.runningBalance >= 0;
+              return (
+                <div
+                  key={entry.id}
+                  className="bg-card border border-border p-4 rounded-xl shadow-sm transition-all hover:shadow-md group"
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    {/* Left: icon + description + date */}
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      <div
+                        className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border ${
+                          isGave
+                            ? "bg-success-light text-success border-success/10"
+                            : "bg-error-light text-error border-error/10"
+                        }`}
+                      >
+                        {isGave ? (
+                          <ArrowUpRight className="w-4 h-4 stroke-[2.5px]" />
+                        ) : (
+                          <ArrowDownRight className="w-4 h-4 stroke-[2.5px]" />
+                        )}
+                      </div>
+                      <div className="space-y-0.5 min-w-0">
+                        <span className="font-extrabold text-foreground text-sm block truncate">
+                          {entry.description}
+                        </span>
+                        <span className="text-[10px] text-foreground-muted font-semibold flex items-center gap-1">
+                          <Calendar className="w-3 h-3 text-icon-muted" />
+                          {new Date(entry.date).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Right: amount + running balance + delete */}
+                    <div className="flex items-center gap-4 shrink-0">
+                      <div className="text-right space-y-0.5">
+                        <span
+                          className={`text-base font-black tracking-tight ${
+                            isGave ? "text-success" : "text-error"
+                          }`}
+                        >
+                          {isGave ? "+" : "-"}
+                          {formatAmount(entry.amount, activeCurrency)}
+                        </span>
+                        <span className="text-[9px] font-bold uppercase tracking-wider block text-foreground-muted">
+                          {isGave ? "You Gave" : "You Got"}
+                        </span>
+                      </div>
+
+                      {/* Running balance indicator */}
+                      <div className="hidden sm:block text-right border-l border-border pl-4 min-w-[80px]">
+                        <span
+                          className={`text-xs font-black tracking-tight ${
+                            isRunningPositive
+                              ? "text-success"
+                              : "text-error"
+                          }`}
+                        >
+                          {formatAmount(
+                            Math.abs(entry.runningBalance),
+                            activeCurrency
+                          )}
+                        </span>
+                        <span className="text-[8px] font-bold uppercase tracking-wider block text-foreground-muted">
+                          Running Bal.
+                        </span>
+                      </div>
+
+                      {/* Delete action */}
+                      {deleteConfirmId === entry.id ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleDeleteEntry(entry.id)}
+                            className="p-1.5 rounded-lg bg-error text-error-foreground hover:brightness-110 transition-all cursor-pointer"
+                            title="Confirm Delete"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirmId(null)}
+                            className="p-1.5 rounded-lg bg-secondary text-foreground-secondary hover:bg-border transition-all cursor-pointer"
+                            title="Cancel"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setDeleteConfirmId(entry.id)}
+                          className="p-1.5 rounded-lg text-icon-muted opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error-light transition-all cursor-pointer"
+                          title="Delete Entry"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}

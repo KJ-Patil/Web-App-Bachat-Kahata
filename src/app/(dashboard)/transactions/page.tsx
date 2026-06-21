@@ -1,0 +1,398 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { Search, Calendar, Edit2, Trash2, ArrowUpRight, ArrowDownRight, Tag, Check, AlertCircle, X } from "lucide-react";
+import { formatAmount } from "@/core/utils/currencyManager";
+
+interface Transaction {
+  id: string;
+  amount: number;
+  type: "expense" | "income";
+  category: string;
+  description: string;
+  date: string;
+}
+
+const MOCK_SEED_TRANSACTIONS: Transaction[] = [
+  {
+    id: "tx-1",
+    amount: 12500,
+    type: "expense",
+    category: "Housing",
+    description: "Monthly apartment maintenance fee",
+    date: new Date().toISOString(), // Today
+  },
+  {
+    id: "tx-2",
+    amount: 2400,
+    type: "expense",
+    category: "Groceries",
+    description: "Weekly organic vegetables",
+    date: new Date().toISOString(), // Today
+  },
+  {
+    id: "tx-3",
+    amount: 98000,
+    type: "income",
+    category: "Salary",
+    description: "Active income payroll",
+    date: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // Yesterday
+  },
+  {
+    id: "tx-4",
+    amount: 1800,
+    type: "expense",
+    category: "Entertainment",
+    description: "Cinema ticket with family",
+    date: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // Yesterday
+  },
+  {
+    id: "tx-5",
+    amount: 5000,
+    type: "expense",
+    category: "Investment",
+    description: "Mutual fund recurring deposit SIP",
+    date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), // Previous Weeks
+  },
+  {
+    id: "tx-6",
+    amount: 3200,
+    type: "expense",
+    category: "Transportation",
+    description: "Weekly fuel refill",
+    date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(), // Previous Weeks
+  },
+];
+
+export default function TransactionsPage() {
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<"all" | "income" | "expense">("all");
+  const [activeCurrency, setActiveCurrency] = useState("INR");
+  
+  // Edit & Delete Actions State
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editAmount, setEditAmount] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  // Initialize and load transactions
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("transactions");
+      if (stored) {
+        setTransactions(JSON.parse(stored));
+      } else {
+        // Seed default records on first load
+        localStorage.setItem("transactions", JSON.stringify(MOCK_SEED_TRANSACTIONS));
+        setTransactions(MOCK_SEED_TRANSACTIONS);
+      }
+
+      const cur = localStorage.getItem("active_currency");
+      if (cur) {
+        setActiveCurrency(cur);
+      }
+    }
+  }, []);
+
+  // Filter list on search query & active type tabs
+  const filteredTransactions = transactions.filter((tx) => {
+    const matchesSearch =
+      tx.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tx.category.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesTab =
+      activeTab === "all" ||
+      (activeTab === "income" && tx.type === "income") ||
+      (activeTab === "expense" && tx.type === "expense");
+
+    return matchesSearch && matchesTab;
+  });
+
+  // Relative Date sorting classification helper
+  const groupTransactionsByDate = (txs: Transaction[]) => {
+    const today = new Date().toDateString();
+    
+    const yesterdayDate = new Date();
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterday = yesterdayDate.toDateString();
+
+    const groups: { today: Transaction[]; yesterday: Transaction[]; previous: Transaction[] } = {
+      today: [],
+      yesterday: [],
+      previous: [],
+    };
+
+    txs.forEach((tx) => {
+      const txDateStr = new Date(tx.date).toDateString();
+      if (txDateStr === today) {
+        groups.today.push(tx);
+      } else if (txDateStr === yesterday) {
+        groups.yesterday.push(tx);
+      } else {
+        groups.previous.push(tx);
+      }
+    });
+
+    return groups;
+  };
+
+  const grouped = groupTransactionsByDate(filteredTransactions);
+
+  // Action: Trigger Inline Deletion
+  const handleDelete = (id: string) => {
+    const updated = transactions.filter((t) => t.id !== id);
+    setTransactions(updated);
+    localStorage.setItem("transactions", JSON.stringify(updated));
+    setDeleteConfirmId(null);
+  };
+
+  // Action: Save Inline Edits
+  const handleSaveEdit = (id: string) => {
+    const numAmount = parseFloat(editAmount);
+    if (isNaN(numAmount) || numAmount <= 0) return;
+
+    const updated = transactions.map((t) => {
+      if (t.id === id) {
+        return {
+          ...t,
+          amount: numAmount,
+          description: editDescription,
+        };
+      }
+      return t;
+    });
+
+    setTransactions(updated);
+    localStorage.setItem("transactions", JSON.stringify(updated));
+    setEditingId(null);
+  };
+
+  // Action: Enter Edit Mode
+  const startEdit = (tx: Transaction) => {
+    setEditingId(tx.id);
+    setEditAmount(String(tx.amount));
+    setEditDescription(tx.description);
+  };
+
+  return (
+    <div className="flex-1 flex flex-col p-6 space-y-6 md:p-8 max-w-5xl mx-auto w-full">
+      {/* Header */}
+      <div className="space-y-1">
+        <h1 className="text-2xl font-extrabold text-foreground tracking-tight sm:text-3xl">
+          Ledger Workspace
+        </h1>
+        <p className="text-sm font-medium text-foreground-muted">
+          Review, filter, and audit active transactions.
+        </p>
+      </div>
+
+      {/* ────────────────── SEARCH AND FILTERS ────────────────── */}
+      <section className="bg-card border border-border p-4 rounded-2xl shadow-sm space-y-4">
+        {/* Search Input */}
+        <div className="relative">
+          <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-icon-muted">
+            <Search className="w-5 h-5" />
+          </span>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="input-base pl-10 w-full"
+            placeholder="Filter by description or category tags..."
+          />
+        </div>
+
+        {/* Tab Segment Selector */}
+        <div className="flex border-b border-border">
+          {(["all", "income", "expense"] as const).map((tab) => {
+            const isActive = activeTab === tab;
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`py-3 px-6 text-sm font-bold border-b-2 capitalize transition-all cursor-pointer ${
+                  isActive
+                    ? "border-primary text-primary font-extrabold"
+                    : "border-transparent text-foreground-muted hover:text-foreground hover:border-border"
+                }`}
+              >
+                {tab}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ────────────────── TRANSACTIONS LIST BY DATE ────────────────── */}
+      <section className="space-y-6 flex-grow">
+        {filteredTransactions.length === 0 ? (
+          <div className="bg-card border border-border rounded-2xl p-12 text-center text-foreground-muted text-sm shadow-sm">
+            No matching transactions found in your local ledger.
+          </div>
+        ) : (
+          <>
+            {/* Render Category Blocks */}
+            {(["today", "yesterday", "previous"] as const).map((blockKey) => {
+              const list = grouped[blockKey];
+              if (list.length === 0) return null;
+
+              const blockTitle = 
+                blockKey === "today" 
+                  ? "Today" 
+                  : blockKey === "yesterday" 
+                    ? "Yesterday" 
+                    : "Previous Weeks";
+
+              return (
+                <div key={blockKey} className="space-y-3">
+                  <h3 className="text-xs font-bold text-foreground-secondary uppercase tracking-widest pl-2 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-icon-muted" />
+                    {blockTitle}
+                  </h3>
+                  
+                  {/* Rows Container */}
+                  <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden divide-y divide-border">
+                    {list.map((tx) => {
+                      const isEditing = editingId === tx.id;
+                      const isDeleting = deleteConfirmId === tx.id;
+
+                      return (
+                        <div 
+                          key={tx.id} 
+                          className={`p-4 transition-all hover:bg-secondary/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
+                            isEditing ? "bg-primary-lighter/30" : ""
+                          }`}
+                        >
+                          {isEditing ? (
+                            /* Inline Editing Block */
+                            <div className="flex-1 flex flex-col sm:flex-row gap-3 w-full">
+                              <input
+                                type="text"
+                                value={editDescription}
+                                onChange={(e) => setEditDescription(e.target.value)}
+                                className="input-base flex-grow text-sm font-bold"
+                                placeholder="Edit description"
+                                required
+                              />
+                              <input
+                                type="number"
+                                value={editAmount}
+                                onChange={(e) => setEditAmount(e.target.value)}
+                                className="input-base w-full sm:w-32 text-sm font-bold"
+                                placeholder="Amount"
+                                min="0.01"
+                                step="0.01"
+                                required
+                              />
+                              <div className="flex gap-2 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveEdit(tx.id)}
+                                  className="p-2 rounded-xl bg-success text-success-foreground hover:bg-success-foreground hover:text-success border border-success transition-all cursor-pointer"
+                                  title="Save Changes"
+                                >
+                                  <Check className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingId(null)}
+                                  className="p-2 rounded-xl bg-card border border-border text-foreground hover:bg-secondary transition-all cursor-pointer"
+                                  title="Cancel"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ) : isDeleting ? (
+                            /* Delete Confirmation Banner */
+                            <div className="flex-1 flex items-center justify-between w-full p-2 bg-error-light text-error rounded-xl">
+                              <span className="text-xs font-semibold flex items-center gap-1.5">
+                                <AlertCircle className="w-4 h-4" />
+                                Delete this ledger entry?
+                              </span>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(tx.id)}
+                                  className="px-3 py-1.5 text-[10px] font-bold rounded-lg bg-error text-error-foreground hover:bg-error-foreground hover:text-error border border-error transition-all cursor-pointer"
+                                >
+                                  Confirm
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setDeleteConfirmId(null)}
+                                  className="px-3 py-1.5 text-[10px] font-bold rounded-lg bg-card border border-border text-foreground hover:bg-secondary transition-all cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            /* Standard View Row */
+                            <>
+                              {/* Left Columns (Description, Category) */}
+                              <div className="flex items-start gap-3 flex-1 min-w-0">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border border-border ${
+                                  tx.type === "income" 
+                                    ? "bg-success-light text-success" 
+                                    : "bg-error-light text-error"
+                                }`}>
+                                  {tx.type === "income" ? (
+                                    <ArrowUpRight className="w-5 h-5" />
+                                  ) : (
+                                    <ArrowDownRight className="w-5 h-5" />
+                                  )}
+                                </div>
+                                <div className="space-y-0.5 min-w-0">
+                                  <span className="font-extrabold text-foreground text-sm block truncate">
+                                    {tx.description}
+                                  </span>
+                                  <span className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider bg-secondary px-2 py-0.5 rounded-md inline-flex items-center gap-1 border border-border">
+                                    <Tag className="w-2.5 h-2.5 text-icon-muted" />
+                                    {tx.category}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Right Columns (Amount, Action Buttons) */}
+                              <div className="flex items-center justify-between sm:justify-end gap-6 shrink-0 border-t sm:border-0 pt-3 sm:pt-0 border-border">
+                                <span className={`text-base font-black tracking-tight ${
+                                  tx.type === "income" ? "text-success" : "text-foreground"
+                                }`}>
+                                  {tx.type === "income" ? "+" : "-"}
+                                  {formatAmount(tx.amount, activeCurrency)}
+                                </span>
+                                
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => startEdit(tx)}
+                                    className="p-2 text-icon-default hover:text-icon-active hover:bg-secondary rounded-xl transition-all cursor-pointer"
+                                    title="Edit Transaction"
+                                  >
+                                    <Edit2 className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => setDeleteConfirmId(tx.id)}
+                                    className="p-2 text-icon-default hover:text-error hover:bg-error-light rounded-xl transition-all cursor-pointer"
+                                    title="Delete Transaction"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
