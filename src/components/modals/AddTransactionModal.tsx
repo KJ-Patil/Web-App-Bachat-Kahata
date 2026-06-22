@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { X, Home, ShoppingBag, Tv, Layers, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { addTransaction, getTransactions, getBudgets } from "@/core/store/dataStore";
 
 interface AddTransactionModalProps {
   isOpen: boolean;
@@ -21,13 +22,6 @@ const CATEGORY_OPTIONS: CategoryOption[] = [
   { id: "Entertainment", name: "Entertainment", icon: Tv },
   { id: "Investment", name: "Investment", icon: Layers },
 ];
-
-const DEFAULT_BUDGETS: Record<string, number> = {
-  Housing: 25000,
-  Groceries: 12000,
-  Entertainment: 6000,
-  Investment: 20000,
-};
 
 export default function AddTransactionModal({
   isOpen,
@@ -60,70 +54,51 @@ export default function AddTransactionModal({
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount <= 0) return;
 
-    // Load active transactions
-    const storedTransactions = localStorage.getItem("transactions");
-    const transactions = storedTransactions ? JSON.parse(storedTransactions) : [];
-
-    // Create new record
-    const newTx = {
-      id: Math.random().toString(36).substring(2, 9),
+    // Create and persist the new record through the central store.
+    addTransaction({
       amount: numAmount,
       type: transactionType,
       category: transactionType === "income" ? "Salary" : category,
       description: description || (transactionType === "income" ? "Active Inflow" : `${category} Cost`),
-      date: new Date().toISOString(),
-    };
+    });
 
-    // Save to ledger array
-    const updatedTransactions = [newTx, ...transactions];
-    localStorage.setItem("transactions", JSON.stringify(updatedTransactions));
+    // Perform Budget Threshold Check (80% capacity checks) for expenses,
+    // but only when the user has actually configured a budget for the category.
+    if (transactionType === "expense") {
+      const budgets = getBudgets();
+      const activeBudget = budgets[category];
 
-    // Update active cache totals to keep home dashboard in sync
-    const currentIncome = Number(localStorage.getItem("total_income") || "75000");
-    const currentSavings = Number(localStorage.getItem("total_savings") || "22000");
+      if (activeBudget && activeBudget > 0) {
+        // Sum active monthly costs in this category (now includes the new entry)
+        const currentMonth = new Date().getMonth();
+        const currentYear = new Date().getFullYear();
 
-    if (transactionType === "income") {
-      localStorage.setItem("total_income", String(currentIncome + numAmount));
-    } else {
-      localStorage.setItem("total_savings", String(Math.max(0, currentSavings - numAmount)));
-      
-      // Perform Budget Threshold Check (80% capacity checks)
-      const budgets = JSON.parse(localStorage.getItem("budgets") || JSON.stringify(DEFAULT_BUDGETS));
-      const activeBudget = budgets[category] || DEFAULT_BUDGETS[category] || 10000;
+        const categorySpent = getTransactions()
+          .filter((tx) => {
+            const txDate = new Date(tx.date);
+            return (
+              tx.type === "expense" &&
+              tx.category === category &&
+              txDate.getMonth() === currentMonth &&
+              txDate.getFullYear() === currentYear
+            );
+          })
+          .reduce((sum, tx) => sum + tx.amount, 0);
 
-      // Sum active monthly costs in this category
-      const currentMonth = new Date().getMonth();
-      const currentYear = new Date().getFullYear();
-      
-      const categorySpent = updatedTransactions
-        .filter((tx: any) => {
-          const txDate = new Date(tx.date);
-          return (
-            tx.type === "expense" &&
-            tx.category === category &&
-            txDate.getMonth() === currentMonth &&
-            txDate.getFullYear() === currentYear
-          );
-        })
-        .reduce((sum: number, tx: any) => sum + tx.amount, 0);
+        const usageRate = categorySpent / activeBudget;
 
-      const usageRate = categorySpent / activeBudget;
+        if (usageRate >= 0.8) {
+          const usagePercentage = Math.round(usageRate * 100);
+          const warning = `Alert: Budget usage for ${category} has reached ${usagePercentage}% (${categorySpent} spent out of ${activeBudget}).`;
 
-      if (usageRate >= 0.8) {
-        const usagePercentage = Math.round(usageRate * 100);
-        const warning = `Alert: Budget usage for ${category} has reached ${usagePercentage}% (${categorySpent} spent out of ${activeBudget}).`;
-        
-        // Write to alert notification system feed
-        const storedNotes = localStorage.getItem("notifications");
-        const notifications = storedNotes ? JSON.parse(storedNotes) : [
-          "Your weekly financial health sync ran successfully.",
-          "Housing budget limit is approaching 80%.",
-          "Goal 'Emergency Fund' reached 75% milestones!"
-        ];
-        
-        const updatedNotes = [warning, ...notifications];
-        localStorage.setItem("notifications", JSON.stringify(updatedNotes));
-        setAlertMessage(`Warning: Cross-category threshold alert triggered! ${category} budget utilization is at ${usagePercentage}%.`);
+          // Write to alert notification system feed
+          const storedNotes = localStorage.getItem("notifications");
+          const notifications = storedNotes ? JSON.parse(storedNotes) : [];
+
+          const updatedNotes = [warning, ...notifications];
+          localStorage.setItem("notifications", JSON.stringify(updatedNotes));
+          setAlertMessage(`Warning: Cross-category threshold alert triggered! ${category} budget utilization is at ${usagePercentage}%.`);
+        }
       }
     }
 

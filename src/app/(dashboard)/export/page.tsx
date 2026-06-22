@@ -49,13 +49,6 @@ interface RawSavingsGoal {
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
-const DEFAULT_BUDGETS: Record<string, number> = {
-  Housing: 25000,
-  Groceries: 12000,
-  Entertainment: 6000,
-  Investment: 20000,
-};
-
 const DATA_TYPE_META: {
   key: DataType;
   label: string;
@@ -93,6 +86,12 @@ function firstOfMonthIso(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
+function daysAgoIso(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
 function formatDateLabel(iso: string): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-IN", {
@@ -120,7 +119,7 @@ export default function ExportPage() {
 
   // Raw localStorage data
   const [rawTransactions, setRawTransactions] = useState<RawTransaction[]>([]);
-  const [rawBudgets, setRawBudgets] = useState<Record<string, number>>(DEFAULT_BUDGETS);
+  const [rawBudgets, setRawBudgets] = useState<Record<string, number>>({});
   const [rawGoals, setRawGoals] = useState<RawSavingsGoal[]>([]);
 
   // UI state
@@ -289,6 +288,17 @@ export default function ExportPage() {
   }, [selectedTypes, totalRecords, format, buildExportables, currencyCode]);
 
   // ── Quick date range presets ───────────────────────────────────────────────
+  const applyToday = () => {
+    const t = todayIso();
+    setDateFrom(t);
+    setDateTo(t);
+  };
+
+  const applyLastDays = (n: number) => {
+    setDateFrom(daysAgoIso(n - 1));
+    setDateTo(todayIso());
+  };
+
   const applyThisMonth = () => {
     setDateFrom(firstOfMonthIso());
     setDateTo(todayIso());
@@ -320,7 +330,25 @@ export default function ExportPage() {
             <Calendar className="w-4 h-4 text-primary" />
             Date Range
           </h2>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={applyToday}
+              className="text-[10px] font-bold px-3 py-1.5 rounded-lg bg-secondary border border-border text-foreground-secondary hover:bg-primary-lighter hover:text-primary hover:border-primary/20 transition-all cursor-pointer"
+            >
+              Today
+            </button>
+            <button
+              onClick={() => applyLastDays(7)}
+              className="text-[10px] font-bold px-3 py-1.5 rounded-lg bg-secondary border border-border text-foreground-secondary hover:bg-primary-lighter hover:text-primary hover:border-primary/20 transition-all cursor-pointer"
+            >
+              Last 7 Days
+            </button>
+            <button
+              onClick={() => applyLastDays(30)}
+              className="text-[10px] font-bold px-3 py-1.5 rounded-lg bg-secondary border border-border text-foreground-secondary hover:bg-primary-lighter hover:text-primary hover:border-primary/20 transition-all cursor-pointer"
+            >
+              Last 30 Days
+            </button>
             <button
               onClick={applyThisMonth}
               className="text-[10px] font-bold px-3 py-1.5 rounded-lg bg-secondary border border-border text-foreground-secondary hover:bg-primary-lighter hover:text-primary hover:border-primary/20 transition-all cursor-pointer"

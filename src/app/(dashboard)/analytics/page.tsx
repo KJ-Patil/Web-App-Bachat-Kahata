@@ -18,6 +18,14 @@ import {
 } from "recharts";
 import { formatAmount } from "@/core/utils/currencyManager";
 import {
+  useTransactions,
+  getTotals,
+  getMonthTotals,
+  getCategoryBreakdown,
+  getMonthlyTrend,
+  getSavingsRate,
+} from "@/core/store/dataStore";
+import {
   PieChart as PieIcon,
   BarChart3,
   TrendingUp,
@@ -28,6 +36,7 @@ import {
   CalendarDays,
   Layers,
   Activity,
+  Inbox,
 } from "lucide-react";
 
 // ──────────────── THEME-ALIGNED COLOR PALETTE ────────────────
@@ -41,97 +50,22 @@ const CHART_COLORS = [
   "#0891b2", // chart-6 Cyan
 ];
 
-// ──────────────── ALLOCATION DATA ────────────────
-const ALLOCATION_DATA = [
-  { name: "Housing", value: 12500, percentage: 32.1 },
-  { name: "Groceries", value: 9200, percentage: 23.6 },
-  { name: "Investment", value: 5000, percentage: 12.8 },
-  { name: "Utilities", value: 4200, percentage: 10.8 },
-  { name: "Entertainment", value: 3100, percentage: 8.0 },
-  { name: "Travel", value: 2800, percentage: 7.2 },
-  { name: "Other", value: 2170, percentage: 5.6 },
-];
+// Percentage change between two values (null when there's no prior baseline).
+function pctChange(current: number, previous: number): number | null {
+  if (previous <= 0) return null;
+  return Math.round(((current - previous) / previous) * 1000) / 10;
+}
 
-const TOTAL_ALLOCATION = ALLOCATION_DATA.reduce((s, d) => s + d.value, 0);
-
-// ──────────────── COMPARATIVE DATA ────────────────
-const COMPARATIVE_DATA = [
-  { category: "Housing", "This Month": 12500, "Last Month": 14000 },
-  { category: "Groceries", "This Month": 9200, "Last Month": 8000 },
-  { category: "Investment", "This Month": 5000, "Last Month": 6000 },
-  { category: "Utilities", "This Month": 4200, "Last Month": 3800 },
-  { category: "Entertainment", "This Month": 3100, "Last Month": 3500 },
-  { category: "Travel", "This Month": 2800, "Last Month": 2200 },
-];
-
-// ──────────────── RANKING DATA ────────────────
-const RANKING_DATA = [
-  { category: "Housing", spent: 12500, ratio: 100, color: CHART_COLORS[0] },
-  { category: "Groceries", spent: 9200, ratio: 73.6, color: CHART_COLORS[1] },
-  { category: "Investment", spent: 5000, ratio: 40.0, color: CHART_COLORS[2] },
-  { category: "Utilities", spent: 4200, ratio: 33.6, color: CHART_COLORS[3] },
-  {
-    category: "Entertainment",
-    spent: 3100,
-    ratio: 24.8,
-    color: CHART_COLORS[4],
-  },
-];
-
-// ──────────────── INCOME VS EXPENSE TREND ────────────────
-const MONTHLY_TREND_DATA = [
-  { month: "Jan", Income: 62000, Expense: 48000 },
-  { month: "Feb", Income: 58000, Expense: 52000 },
-  { month: "Mar", Income: 71000, Expense: 45000 },
-  { month: "Apr", Income: 65000, Expense: 51000 },
-  { month: "May", Income: 69000, Expense: 47000 },
-  { month: "Jun", Income: 75000, Expense: 39000 },
-];
-
-// ──────────────── KPI SUMMARY ────────────────
-const KPI_CARDS = [
-  {
-    label: "Total Income",
-    value: 75000,
-    change: "+8.7%",
-    isUp: true,
-    icon: ArrowUpRight,
-    accentClass: "text-success",
-    bgClass: "bg-success-light",
-    borderClass: "border-success/15",
-  },
-  {
-    label: "Total Expense",
-    value: 38970,
-    change: "-4.2%",
-    isUp: false,
-    icon: ArrowDownRight,
-    accentClass: "text-error",
-    bgClass: "bg-error-light",
-    borderClass: "border-error/15",
-  },
-  {
-    label: "Net Savings",
-    value: 36030,
-    change: "+22.1%",
-    isUp: true,
-    icon: DollarSign,
-    accentClass: "text-primary",
-    bgClass: "bg-primary-lighter",
-    borderClass: "border-primary/15",
-  },
-  {
-    label: "Savings Rate",
-    value: null,
-    displayValue: "48.0%",
-    change: "+5.3%",
-    isUp: true,
-    icon: Activity,
-    accentClass: "text-brand",
-    bgClass: "bg-brand-light",
-    borderClass: "border-brand/15",
-  },
-];
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-background-subtle rounded-xl text-center px-6 py-10">
+      <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center text-icon-muted">
+        <Inbox className="w-6 h-6" />
+      </div>
+      <p className="text-xs font-medium text-foreground-muted max-w-xs">{message}</p>
+    </div>
+  );
+}
 
 // ──────────────── CUSTOM TOOLTIP ────────────────
 interface CustomTooltipProps {
@@ -202,6 +136,8 @@ export default function AnalyticsPage() {
   const [isMounted, setIsMounted] = useState(false);
   const [activeCurrency, setActiveCurrency] = useState("INR");
 
+  const transactions = useTransactions();
+
   useEffect(() => {
     setIsMounted(true);
     if (typeof window !== "undefined") {
@@ -209,6 +145,105 @@ export default function AnalyticsPage() {
       if (cur) setActiveCurrency(cur);
     }
   }, []);
+
+  // ── All metrics below are derived live from the user's real ledger ──
+  const totals = useMemo(() => getTotals(transactions), [transactions]);
+  const thisMonth = useMemo(() => getMonthTotals(0, transactions), [transactions]);
+  const lastMonth = useMemo(() => getMonthTotals(-1, transactions), [transactions]);
+
+  // Lifetime expenditure allocation by category (pie + side ledger).
+  const ALLOCATION_DATA = useMemo(
+    () => getCategoryBreakdown("expense", null, transactions),
+    [transactions]
+  );
+  const TOTAL_ALLOCATION = totals.expense;
+
+  // This-month vs last-month spend for the top categories (grouped bars).
+  const COMPARATIVE_DATA = useMemo(() => {
+    const cur = getCategoryBreakdown("expense", 0, transactions);
+    const prev = getCategoryBreakdown("expense", -1, transactions);
+    const prevMap = new Map(prev.map((c) => [c.name, c.value]));
+    const names = Array.from(new Set([...cur, ...prev].map((c) => c.name))).slice(0, 6);
+    const curMap = new Map(cur.map((c) => [c.name, c.value]));
+    return names.map((category) => ({
+      category,
+      "This Month": curMap.get(category) || 0,
+      "Last Month": prevMap.get(category) || 0,
+    }));
+  }, [transactions]);
+
+  // Top 5 cost centers, ranked relative to the largest category.
+  const RANKING_DATA = useMemo(() => {
+    const top = ALLOCATION_DATA.slice(0, 5);
+    const max = top[0]?.value || 0;
+    return top.map((item, i) => ({
+      category: item.name,
+      spent: item.value,
+      ratio: max > 0 ? Math.round((item.value / max) * 1000) / 10 : 0,
+      color: CHART_COLORS[i % CHART_COLORS.length],
+    }));
+  }, [ALLOCATION_DATA]);
+
+  // Income vs expense across the last 6 months.
+  const MONTHLY_TREND_DATA = useMemo(
+    () => getMonthlyTrend(6, transactions),
+    [transactions]
+  );
+
+  // KPI headline values (lifetime) with month-over-month change badges.
+  const savingsRate = getSavingsRate(transactions);
+  const lastSavingsRate = lastMonth.income > 0
+    ? Math.round(((lastMonth.income - lastMonth.expense) / lastMonth.income) * 1000) / 10
+    : 0;
+  const KPI_CARDS = [
+    {
+      label: "Total Income",
+      value: totals.income,
+      displayValue: undefined as string | undefined,
+      change: pctChange(thisMonth.income, lastMonth.income),
+      icon: ArrowUpRight,
+      accentClass: "text-success",
+      bgClass: "bg-success-light",
+      borderClass: "border-success/15",
+    },
+    {
+      label: "Total Expense",
+      value: totals.expense,
+      displayValue: undefined as string | undefined,
+      change: pctChange(thisMonth.expense, lastMonth.expense),
+      icon: ArrowDownRight,
+      accentClass: "text-error",
+      bgClass: "bg-error-light",
+      borderClass: "border-error/15",
+    },
+    {
+      label: "Net Savings",
+      value: totals.balance,
+      displayValue: undefined as string | undefined,
+      change: pctChange(
+        thisMonth.income - thisMonth.expense,
+        lastMonth.income - lastMonth.expense
+      ),
+      icon: DollarSign,
+      accentClass: "text-primary",
+      bgClass: "bg-primary-lighter",
+      borderClass: "border-primary/15",
+    },
+    {
+      label: "Savings Rate",
+      value: null as number | null,
+      displayValue: `${savingsRate}%`,
+      change: lastSavingsRate > 0
+        ? Math.round((savingsRate - lastSavingsRate) * 10) / 10
+        : null,
+      icon: Activity,
+      accentClass: "text-brand",
+      bgClass: "bg-brand-light",
+      borderClass: "border-brand/15",
+    },
+  ];
+
+  const hasData = transactions.length > 0;
 
   // Determine current/last month labels
   const currentMonth = new Date().toLocaleString("en-US", { month: "long" });
@@ -237,6 +272,11 @@ export default function AnalyticsPage() {
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {KPI_CARDS.map((kpi) => {
           const Icon = kpi.icon;
+          const isUp = (kpi.change ?? 0) >= 0;
+          const changeLabel =
+            kpi.change === null
+              ? "—"
+              : `${kpi.change > 0 ? "+" : ""}${kpi.change}%`;
           return (
             <div
               key={kpi.label}
@@ -262,12 +302,14 @@ export default function AnalyticsPage() {
                 <div className="flex items-center gap-1">
                   <span
                     className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                      kpi.isUp
-                        ? "bg-success-light text-success"
-                        : "bg-error-light text-error"
+                      kpi.change === null
+                        ? "bg-secondary text-foreground-muted"
+                        : isUp
+                          ? "bg-success-light text-success"
+                          : "bg-error-light text-error"
                     }`}
                   >
-                    {kpi.change}
+                    {changeLabel}
                   </span>
                   <span className="text-[9px] font-semibold text-foreground-muted">
                     vs last month
@@ -310,7 +352,13 @@ export default function AnalyticsPage() {
         </div>
 
         <div className="h-72 w-full">
-          {isMounted ? (
+          {!isMounted ? (
+            <div className="w-full h-full flex items-center justify-center bg-background-subtle rounded-xl animate-pulse text-xs text-foreground-muted">
+              Loading chart metrics...
+            </div>
+          ) : !hasData ? (
+            <EmptyState message="No cash-flow history yet — add income and expenses to see your monthly trend." />
+          ) : (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart
                 data={MONTHLY_TREND_DATA}
@@ -405,10 +453,6 @@ export default function AnalyticsPage() {
                 />
               </AreaChart>
             </ResponsiveContainer>
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-background-subtle rounded-xl animate-pulse text-xs text-foreground-muted">
-              Loading chart metrics...
-            </div>
           )}
         </div>
       </section>
@@ -430,7 +474,13 @@ export default function AnalyticsPage() {
           <div className="flex-1 flex flex-col sm:flex-row items-center gap-6 py-2">
             {/* Pie Chart Node */}
             <div className="h-56 w-56 shrink-0 relative flex items-center justify-center">
-              {isMounted ? (
+              {!isMounted ? (
+                <div className="w-full h-full rounded-full border border-dashed border-border animate-pulse" />
+              ) : ALLOCATION_DATA.length === 0 ? (
+                <div className="w-44 h-44 rounded-full border border-dashed border-border flex items-center justify-center text-center px-4">
+                  <span className="text-[11px] font-medium text-foreground-muted">No expenses recorded yet</span>
+                </div>
+              ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -457,8 +507,6 @@ export default function AnalyticsPage() {
                     />
                   </PieChart>
                 </ResponsiveContainer>
-              ) : (
-                <div className="w-full h-full rounded-full border border-dashed border-border animate-pulse" />
               )}
               <div className="absolute text-center">
                 <span className="text-[9px] font-bold uppercase tracking-wider text-foreground-muted block">
@@ -516,7 +564,13 @@ export default function AnalyticsPage() {
           </div>
 
           <div className="h-64 w-full flex-1">
-            {isMounted ? (
+            {!isMounted ? (
+              <div className="w-full h-full flex items-center justify-center bg-background-subtle rounded-xl animate-pulse text-xs text-foreground-muted">
+                Loading chart metrics...
+              </div>
+            ) : COMPARATIVE_DATA.length === 0 ? (
+              <EmptyState message="No spending yet to compare across months." />
+            ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={COMPARATIVE_DATA}
@@ -562,10 +616,6 @@ export default function AnalyticsPage() {
                   />
                 </BarChart>
               </ResponsiveContainer>
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-background-subtle rounded-xl animate-pulse text-xs text-foreground-muted">
-                Loading chart metrics...
-              </div>
             )}
           </div>
         </div>
@@ -591,6 +641,11 @@ export default function AnalyticsPage() {
 
         {/* Sorted ranking column tracking top 5 categories */}
         <div className="space-y-5">
+          {RANKING_DATA.length === 0 && (
+            <p className="text-xs font-medium text-foreground-muted py-6 text-center">
+              No expense categories to rank yet — add some transactions to populate this list.
+            </p>
+          )}
           {RANKING_DATA.map((item, index) => (
             <div key={item.category} className="space-y-2">
               <div className="flex justify-between items-center text-xs font-bold">

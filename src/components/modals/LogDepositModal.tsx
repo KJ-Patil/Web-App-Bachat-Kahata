@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { X, Check, ArrowUpRight } from "lucide-react";
+import { addTransaction, getSavingsGoals, setSavingsGoals } from "@/core/store/dataStore";
 
 interface LogDepositModalProps {
   isOpen: boolean;
@@ -35,45 +36,21 @@ export default function LogDepositModal({
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount <= 0) return;
 
-    // Load active goals
-    const storedGoals = localStorage.getItem("savings_goals");
-    if (storedGoals) {
-      try {
-        const goals = JSON.parse(storedGoals);
-        const updatedGoals = goals.map((g: any) => {
-          if (g.id === goalId) {
-            return {
-              ...g,
-              current: g.current + numAmount,
-            };
-          }
-          return g;
-        });
+    // Update the targeted goal's accumulated amount.
+    const goals = getSavingsGoals();
+    const updatedGoals = goals.map((g) =>
+      g.id === goalId ? { ...g, current: g.current + numAmount } : g
+    );
+    setSavingsGoals(updatedGoals);
 
-        localStorage.setItem("savings_goals", JSON.stringify(updatedGoals));
-        
-        // Also log this deposit as an "Investment" category transaction in the general ledger
-        // so that active savings/liquidity metric indices update dynamically!
-        const storedTxs = localStorage.getItem("transactions");
-        const transactions = storedTxs ? JSON.parse(storedTxs) : [];
-        const newTx = {
-          id: Math.random().toString(36).substring(2, 9),
-          amount: numAmount,
-          type: "expense", // Deposits to savings are out of active liquid flow
-          category: "Investment",
-          description: `Deposit to '${goalName}' vault`,
-          date: new Date().toISOString(),
-        };
-        localStorage.setItem("transactions", JSON.stringify([newTx, ...transactions]));
-
-        // Sync active liquidity buffers
-        const currentSavings = Number(localStorage.getItem("total_savings") || "22000");
-        localStorage.setItem("total_savings", String(currentSavings + numAmount));
-
-      } catch (e) {
-        // Handle JSON errors
-      }
-    }
+    // Also log this deposit as an "Investment" category transaction in the general
+    // ledger so that active savings/liquidity metric indices update dynamically!
+    addTransaction({
+      amount: numAmount,
+      type: "expense", // Deposits to savings are out of active liquid flow
+      category: "Investment",
+      description: `Deposit to '${goalName}' vault`,
+    });
 
     setSuccess(true);
     setTimeout(() => {

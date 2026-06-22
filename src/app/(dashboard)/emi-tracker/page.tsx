@@ -61,31 +61,6 @@ function calcAmortization(loan: LoanRecord) {
   };
 }
 
-// ─── Seed data for first load ─────────────────────────────────────────────────
-
-const SEED_LOANS: LoanRecord[] = [
-  {
-    id: "loan-1",
-    name: "Home Loan",
-    lender: "HDFC Bank",
-    principal: 3500000,
-    annualInterestRate: 8.5,
-    tenureMonths: 240,
-    monthsPaid: 36,
-    startDate: "2021-06-01",
-  },
-  {
-    id: "loan-2",
-    name: "Car Loan",
-    lender: "Axis Bank",
-    principal: 650000,
-    annualInterestRate: 9.25,
-    tenureMonths: 60,
-    monthsPaid: 18,
-    startDate: "2023-01-01",
-  },
-];
-
 // ─── Sub-component: Single Loan Card ─────────────────────────────────────────
 
 interface LoanCardProps {
@@ -341,12 +316,12 @@ export default function EmiTrackerPage() {
       try {
         setLoans(JSON.parse(stored));
       } catch {
-        setLoans(SEED_LOANS);
-        localStorage.setItem("loans", JSON.stringify(SEED_LOANS));
+        // Malformed cache — start clean rather than fabricating data
+        setLoans([]);
       }
     } else {
-      setLoans(SEED_LOANS);
-      localStorage.setItem("loans", JSON.stringify(SEED_LOANS));
+      // No loans until the user adds one — no seeded liabilities
+      setLoans([]);
     }
   }, []);
 

@@ -1,10 +1,20 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { Bell, ArrowUpRight, ArrowDownRight, Wallet, Target, Activity, Calendar } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Bell, ArrowUpRight, ArrowDownRight, Wallet, Target, Activity, Calendar, Inbox } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
 import SmsPasteZone from "@/components/automation/SmsPasteZone";
-import { 
+import {
+  useTransactions,
+  getTotals,
+  getMonthTotals,
+  getCategoryBreakdown,
+  getDailyBalanceTrend,
+  getBudgets,
+  getSavingsGoals,
+  getSavingsRate,
+} from "@/core/store/dataStore";
+import {
   ResponsiveContainer,
   LineChart,
   Line,
@@ -16,33 +26,56 @@ import {
   Tooltip,
 } from "recharts";
 
-// Mock Data for Charts
-const LINE_TREND_DATA = [
-  { day: "Mon", Balance: 68000 },
-  { day: "Tue", Balance: 69200 },
-  { day: "Wed", Balance: 67100 },
-  { day: "Thu", Balance: 71500 },
-  { day: "Fri", Balance: 73000 },
-  { day: "Sat", Balance: 74200 },
-  { day: "Sun", Balance: 75000 },
-];
-
-const CATEGORY_BAR_DATA = [
-  { category: "Dining", Amount: 2400 },
-  { category: "Housing", Amount: 12500 },
-  { category: "Travel", Amount: 1800 },
-  { category: "Entertainment", Amount: 3100 },
-  { category: "Utilities", Amount: 4200 },
-  { category: "Groceries", Amount: 6800 },
-];
-
 export default function WorkspacePage() {
   const [isMounted, setIsMounted] = useState(false);
   const [userName, setUserName] = useState("Guest");
   const [activeCurrency, setActiveCurrency] = useState("INR");
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<string[]>([]);
 
-  // Prevent Next.js hydration issues with Recharts
+  const transactions = useTransactions();
+
+  // ── Derived, real-time metrics computed from the user's own transactions ──
+  const totals = useMemo(() => getTotals(transactions), [transactions]);
+  const monthTotals = useMemo(() => getMonthTotals(0, transactions), [transactions]);
+  const lineTrendData = useMemo(() => getDailyBalanceTrend(7, transactions), [transactions]);
+  const categoryBarData = useMemo(
+    () =>
+      getCategoryBreakdown("expense", 0, transactions).map((c) => ({
+        category: c.name,
+        Amount: c.value,
+      })),
+    [transactions]
+  );
+
+  // Remaining budget %: this month's spend against the sum of configured budgets.
+  const budgetRemaining = useMemo(() => {
+    const budgets = getBudgets();
+    const totalBudget = Object.values(budgets).reduce((a, b) => a + b, 0);
+    if (totalBudget <= 0) return null;
+    const remaining = Math.max(0, totalBudget - monthTotals.expense);
+    return Math.round((remaining / totalBudget) * 1000) / 10;
+  }, [transactions, monthTotals.expense]);
+
+  // Overall savings-goal progress.
+  const goalProgress = useMemo(() => {
+    const goals = getSavingsGoals();
+    const target = goals.reduce((a, g) => a + g.target, 0);
+    const current = goals.reduce((a, g) => a + g.current, 0);
+    if (target <= 0) return null;
+    return Math.round((Math.min(current, target) / target) * 1000) / 10;
+  }, [transactions]);
+
+  // Health index derived from the real savings rate.
+  const healthScore = useMemo(() => {
+    if (transactions.length === 0) return null;
+    const rate = getSavingsRate(transactions);
+    return Math.min(Math.max(Math.round(40 + rate * 0.6), 0), 100);
+  }, [transactions]);
+
+  const hasData = transactions.length > 0;
+
+  // Prevent Next.js hydration issues with Recharts + load client-only state.
   useEffect(() => {
     setIsMounted(true);
     if (typeof window !== "undefined") {
@@ -57,10 +90,25 @@ export default function WorkspacePage() {
           // Fallback to raw session value or defaults
         }
       }
-      
+
       const configCurrency = localStorage.getItem("active_currency");
       if (configCurrency) {
         setActiveCurrency(configCurrency);
+      }
+
+      const storedNotes = localStorage.getItem("notifications");
+      if (storedNotes) {
+        try {
+          const parsed = JSON.parse(storedNotes);
+          // Notifications may be stored as raw strings or as objects with a message.
+          setNotifications(
+            parsed.map((n: unknown) =>
+              typeof n === "string" ? n : (n as { message?: string }).message || String(n)
+            )
+          );
+        } catch (e) {
+          // Ignore malformed notification cache
+        }
       }
     }
   }, []);
@@ -71,13 +119,6 @@ export default function WorkspacePage() {
     if (hour < 17) return "Good Afternoon";
     return "Good Evening";
   };
-
-  // Mock Notification Alert list
-  const notifications = [
-    "Your weekly financial health sync ran successfully.",
-    "Housing budget limit is approaching 80%.",
-    "Goal 'Emergency Fund' reached 75% milestones!"
-  ];
 
   return (
     <div className="flex-1 flex flex-col p-6 space-y-6 md:p-8 max-w-7xl mx-auto w-full">
@@ -100,10 +141,14 @@ export default function WorkspacePage() {
             aria-label="Notifications"
           >
             <Bell className="w-5 h-5" />
-            <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-error animate-ping"></span>
-            <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-error"></span>
+            {notifications.length > 0 && (
+              <>
+                <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-error animate-ping"></span>
+                <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-error"></span>
+              </>
+            )}
           </button>
-          
+
           {showNotifications && (
             <div className="absolute right-0 mt-3 w-80 bg-card border border-border rounded-xl shadow-lg z-40 p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-150">
               <div className="flex justify-between items-center">
@@ -111,9 +156,13 @@ export default function WorkspacePage() {
                 <button onClick={() => setShowNotifications(false)} className="text-[10px] text-primary hover:underline">Dismiss All</button>
               </div>
               <div className="space-y-2 divide-y divide-border">
-                {notifications.map((note, i) => (
-                  <p key={i} className="text-xs text-foreground-secondary pt-2 first:pt-0">{note}</p>
-                ))}
+                {notifications.length === 0 ? (
+                  <p className="text-xs text-foreground-muted pt-2">No new alerts right now.</p>
+                ) : (
+                  notifications.map((note, i) => (
+                    <p key={i} className="text-xs text-foreground-secondary pt-2 first:pt-0">{note}</p>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -131,7 +180,7 @@ export default function WorkspacePage() {
         <div className="space-y-2">
           <span className="text-xs font-bold uppercase tracking-widest text-primary/80">Available Liquidity</span>
           <h2 className="text-4xl font-black tracking-tight md:text-5xl">
-            {formatAmount(75000, activeCurrency)}
+            {formatAmount(totals.balance, activeCurrency)}
           </h2>
           <p className="text-xs font-medium text-primary/70">
             Computed across all active offline database vaults.
@@ -145,17 +194,17 @@ export default function WorkspacePage() {
             </div>
             <div>
               <span className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider block">Inflow</span>
-              <span className="text-sm font-extrabold text-foreground">{formatAmount(98000, activeCurrency)}</span>
+              <span className="text-sm font-extrabold text-foreground">{formatAmount(monthTotals.income, activeCurrency)}</span>
             </div>
           </div>
-          
+
           <div className="bg-white/60 backdrop-blur-sm px-4 py-3 rounded-xl flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-error/10 text-error flex items-center justify-center">
               <ArrowDownRight className="w-4 h-4" />
             </div>
             <div>
               <span className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider block">Outflow</span>
-              <span className="text-sm font-extrabold text-foreground">{formatAmount(23000, activeCurrency)}</span>
+              <span className="text-sm font-extrabold text-foreground">{formatAmount(monthTotals.expense, activeCurrency)}</span>
             </div>
           </div>
         </div>
@@ -164,7 +213,7 @@ export default function WorkspacePage() {
       {/* ────────────────── STATISTICAL GRID ────────────────── */}
       <section className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
         <div className="grid grid-cols-1 md:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-border-strong">
-          
+
           {/* Col 1: Monthly Budget Remaining */}
           <div className="p-6 space-y-2">
             <div className="flex items-center justify-between text-icon-default">
@@ -172,9 +221,11 @@ export default function WorkspacePage() {
               <Wallet className="w-4 h-4 text-primary" />
             </div>
             <div className="space-y-1">
-              <h3 className="text-xl font-bold text-foreground">65.2%</h3>
+              <h3 className="text-xl font-bold text-foreground">
+                {budgetRemaining === null ? "—" : `${budgetRemaining}%`}
+              </h3>
               <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
-                <div className="bg-primary h-full rounded-full" style={{ width: "65.2%" }}></div>
+                <div className="bg-primary h-full rounded-full" style={{ width: `${budgetRemaining ?? 0}%` }}></div>
               </div>
             </div>
           </div>
@@ -186,9 +237,11 @@ export default function WorkspacePage() {
               <Target className="w-4 h-4 text-brand" />
             </div>
             <div className="space-y-1">
-              <h3 className="text-xl font-bold text-foreground">78.0%</h3>
+              <h3 className="text-xl font-bold text-foreground">
+                {goalProgress === null ? "—" : `${goalProgress}%`}
+              </h3>
               <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
-                <div className="bg-brand h-full rounded-full" style={{ width: "78%" }}></div>
+                <div className="bg-brand h-full rounded-full" style={{ width: `${goalProgress ?? 0}%` }}></div>
               </div>
             </div>
           </div>
@@ -200,20 +253,26 @@ export default function WorkspacePage() {
               <Activity className="w-4 h-4 text-success" />
             </div>
             <div className="space-y-1">
-              <h3 className="text-xl font-bold text-foreground">72 / 100</h3>
-              <p className="text-xs text-foreground-muted">Stable capital flow efficiency.</p>
+              <h3 className="text-xl font-bold text-foreground">
+                {healthScore === null ? "—" : `${healthScore} / 100`}
+              </h3>
+              <p className="text-xs text-foreground-muted">
+                {healthScore === null ? "Add transactions to compute." : "Based on your active savings rate."}
+              </p>
             </div>
           </div>
 
-          {/* Col 4: Last Catchup Run Status */}
+          {/* Col 4: Ledger Entry Count */}
           <div className="p-6 space-y-2">
             <div className="flex items-center justify-between text-icon-default">
-              <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">Sync State</span>
+              <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">Ledger Entries</span>
               <Calendar className="w-4 h-4 text-icon-muted" />
             </div>
             <div className="space-y-1">
-              <h3 className="text-xl font-bold text-foreground">Synced</h3>
-              <p className="text-xs text-foreground-muted">All local transactions verified.</p>
+              <h3 className="text-xl font-bold text-foreground">{transactions.length}</h3>
+              <p className="text-xs text-foreground-muted">
+                {hasData ? "All local transactions verified." : "No transactions recorded yet."}
+              </p>
             </div>
           </div>
 
@@ -222,7 +281,7 @@ export default function WorkspacePage() {
 
       {/* ────────────────── ANALYTICS CHART CANVAS ────────────────── */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
+
         {/* Trend line Visualizer (Chart 1 - Blue) */}
         <div className="bg-card border border-border p-6 rounded-2xl shadow-sm space-y-4">
           <div>
@@ -230,28 +289,30 @@ export default function WorkspacePage() {
             <p className="text-xs text-foreground-muted">Running active liquidity trajectory (7 days)</p>
           </div>
           <div className="h-72 w-full">
-            {isMounted ? (
+            {!isMounted ? (
+              <div className="w-full h-full flex items-center justify-center bg-background-subtle rounded-xl animate-pulse text-xs text-foreground-muted">Loading chart metrics...</div>
+            ) : !hasData ? (
+              <EmptyChart message="No balance history yet — add a transaction to begin tracking." />
+            ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={LINE_TREND_DATA} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <LineChart data={lineTrendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="day" stroke="#94a3b8" fontSize={11} tickLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} domain={[60000, 80000]} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px" }} 
+                  <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} domain={["auto", "auto"]} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px" }}
                     labelStyle={{ fontWeight: "bold", color: "#0f172a" }}
                   />
-                  <Line 
-                    type="monotone" 
-                    dataKey="Balance" 
-                    stroke="#1d4ed8" 
-                    strokeWidth={3} 
+                  <Line
+                    type="monotone"
+                    dataKey="Balance"
+                    stroke="#1d4ed8"
+                    strokeWidth={3}
                     dot={{ r: 4, stroke: "#1d4ed8", strokeWidth: 2, fill: "#ffffff" }}
-                    activeDot={{ r: 6 }} 
+                    activeDot={{ r: 6 }}
                   />
                 </LineChart>
               </ResponsiveContainer>
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-background-subtle rounded-xl animate-pulse text-xs text-foreground-muted">Loading chart metrics...</div>
             )}
           </div>
         </div>
@@ -263,26 +324,39 @@ export default function WorkspacePage() {
             <p className="text-xs text-foreground-muted">Consolidated active monthly billing metrics</p>
           </div>
           <div className="h-72 w-full">
-            {isMounted ? (
+            {!isMounted ? (
+              <div className="w-full h-full flex items-center justify-center bg-background-subtle rounded-xl animate-pulse text-xs text-foreground-muted">Loading chart metrics...</div>
+            ) : categoryBarData.length === 0 ? (
+              <EmptyChart message="No expenses this month yet — your category breakdown will appear here." />
+            ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={CATEGORY_BAR_DATA} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <BarChart data={categoryBarData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="category" stroke="#94a3b8" fontSize={11} tickLine={false} />
                   <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px" }} 
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px" }}
                     labelStyle={{ fontWeight: "bold", color: "#0f172a" }}
                   />
                   <Bar dataKey="Amount" fill="#ea580c" radius={[6, 6, 0, 0]} barSize={32} />
                 </BarChart>
               </ResponsiveContainer>
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-background-subtle rounded-xl animate-pulse text-xs text-foreground-muted">Loading chart metrics...</div>
             )}
           </div>
         </div>
 
       </section>
+    </div>
+  );
+}
+
+function EmptyChart({ message }: { message: string }) {
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-background-subtle rounded-xl text-center px-6">
+      <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center text-icon-muted">
+        <Inbox className="w-6 h-6" />
+      </div>
+      <p className="text-xs font-medium text-foreground-muted max-w-xs">{message}</p>
     </div>
   );
 }

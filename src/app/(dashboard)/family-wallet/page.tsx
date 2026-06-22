@@ -13,11 +13,6 @@ interface FamilyGroup {
   totalBalance: number;
 }
 
-const SEED_GROUPS: FamilyGroup[] = [
-  { id: "grp-1", name: "Home Expenses", code: "123456", members: 3, totalBalance: 14500 },
-  { id: "grp-2", name: "Goa Trip Fund", code: "654321", members: 5, totalBalance: 42000 },
-];
-
 export default function FamilyWalletPage() {
   const [groups, setGroups] = useState<FamilyGroup[]>([]);
   const [inviteCode, setInviteCode] = useState("");
@@ -33,8 +28,8 @@ export default function FamilyWalletPage() {
       if (stored) {
         setGroups(JSON.parse(stored));
       } else {
-        localStorage.setItem("family_groups", JSON.stringify(SEED_GROUPS));
-        setGroups(SEED_GROUPS);
+        // No shared wallets until the user joins or creates one — no seeded groups
+        setGroups([]);
       }
     }
   }, []);

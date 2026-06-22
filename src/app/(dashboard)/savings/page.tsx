@@ -1,41 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Coins, Plus, Calendar, Target, TrendingUp, AlertCircle } from "lucide-react";
+import { Coins, Plus, Calendar, Target, TrendingUp, AlertCircle, Inbox } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
 import LogDepositModal from "@/components/modals/LogDepositModal";
-
-interface SavingsGoal {
-  id: string;
-  name: string;
-  target: number;
-  current: number;
-  deadline: string;
-}
-
-const SEED_GOALS: SavingsGoal[] = [
-  {
-    id: "goal-1",
-    name: "Emergency Cash Buffer",
-    target: 100000,
-    current: 45000,
-    deadline: "2026-12-31", // Future date
-  },
-  {
-    id: "goal-2",
-    name: "Thermax Certification",
-    target: 25000,
-    current: 15000,
-    deadline: "2026-08-31", // Future date
-  },
-  {
-    id: "goal-3",
-    name: "Retirement Vault Index",
-    target: 500000,
-    current: 120000,
-    deadline: "2028-06-30", // Future date
-  },
-];
+import { SavingsGoal, getSavingsGoals } from "@/core/store/dataStore";
 
 export default function SavingsPage() {
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
@@ -55,14 +24,8 @@ export default function SavingsPage() {
     const cur = localStorage.getItem("active_currency");
     if (cur) setActiveCurrency(cur);
 
-    // Load goals
-    const storedGoals = localStorage.getItem("savings_goals");
-    if (storedGoals) {
-      setGoals(JSON.parse(storedGoals));
-    } else {
-      localStorage.setItem("savings_goals", JSON.stringify(SEED_GOALS));
-      setGoals(SEED_GOALS);
-    }
+    // Load goals (empty until the user creates one — no fabricated seeds)
+    setGoals(getSavingsGoals());
   };
 
   const handleOpenDepositModal = (goal: SavingsGoal) => {
@@ -107,6 +70,16 @@ export default function SavingsPage() {
       </div>
 
       {/* ────────────────── OBJECTIVE CARDS GRID ────────────────── */}
+      {goals.length === 0 ? (
+        <section className="bg-card border border-border rounded-2xl shadow-sm p-12 flex flex-col items-center justify-center text-center gap-3">
+          <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center text-icon-muted">
+            <Inbox className="w-6 h-6" />
+          </div>
+          <p className="text-sm font-medium text-foreground-muted max-w-sm">
+            No savings goals yet. Once you create a goal, your progress and required monthly deposits will appear here.
+          </p>
+        </section>
+      ) : (
       <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {goals.map((goal) => {
           const pct = Math.min(Math.round((goal.current / goal.target) * 100), 100);
@@ -200,6 +173,7 @@ export default function SavingsPage() {
           );
         })}
       </section>
+      )}
 
       {/* Log Deposit Modal Overlay */}
       <LogDepositModal

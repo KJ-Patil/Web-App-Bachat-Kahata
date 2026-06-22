@@ -13,8 +13,12 @@ export default function SettingsPage() {
   // Stages: 0 = confirm, 1 = final confirm, 2 = done, 3 = email verification
   const [clearStage, setClearStage] = useState<0 | 1 | 2 | 3>(0);
 
+  // Real user profile, loaded from the signup session
+  const [userName, setUserName] = useState("Guest");
+  const [userEmail, setUserEmail] = useState("");
+  const [userAvatar, setUserAvatar] = useState<string | null>(null);
+
   // Email verification (demo only — no real email is sent)
-  const userEmail = "rahul.sharma@example.com";
   const [emailVerifyEnabled, setEmailVerifyEnabled] = useState(false);
   const [sentCode, setSentCode] = useState("");
   const [enteredCode, setEnteredCode] = useState("");
@@ -31,9 +35,22 @@ export default function SettingsPage() {
     if (typeof window !== "undefined") {
       const cur = localStorage.getItem("active_currency");
       if (cur) setActiveCurrency(cur);
-      
+
       const bio = localStorage.getItem("biometrics_enabled");
       if (bio === "true") setBiometricsEnabled(true);
+
+      // Load the real signed-in profile from the session
+      const session = localStorage.getItem("user_session");
+      if (session) {
+        try {
+          const parsed = JSON.parse(session);
+          if (parsed.name) setUserName(parsed.name);
+          if (parsed.email) setUserEmail(parsed.email);
+          if (parsed.avatarUrl) setUserAvatar(parsed.avatarUrl);
+        } catch {
+          // Ignore malformed session
+        }
+      }
     }
   }, []);
 
@@ -101,14 +118,19 @@ export default function SettingsPage() {
 
       {/* User Profile Module */}
       <section className="bg-card border border-border-strong rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row items-center gap-6">
-        <div className="w-20 h-20 rounded-full bg-primary-lighter text-primary flex items-center justify-center border-4 border-background shadow-inner shrink-0">
-          <User className="w-10 h-10" />
+        <div className="w-20 h-20 rounded-full bg-primary-lighter text-primary flex items-center justify-center border-4 border-background shadow-inner shrink-0 overflow-hidden">
+          {userAvatar ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={userAvatar} alt={userName} className="w-full h-full object-cover" />
+          ) : (
+            <User className="w-10 h-10" />
+          )}
         </div>
         <div className="flex-1 text-center sm:text-left space-y-1">
-          <h2 className="text-xl font-black text-foreground">Rahul Sharma</h2>
-          <p className="text-sm font-semibold text-foreground-secondary">rahul.sharma@example.com</p>
+          <h2 className="text-xl font-black text-foreground">{userName}</h2>
+          <p className="text-sm font-semibold text-foreground-secondary">{userEmail || "No email on file"}</p>
           <span className="inline-block mt-2 text-[10px] font-bold text-success uppercase tracking-widest bg-success-light px-2 py-0.5 rounded-md">
-            Pro Plan Active
+            Local Account
           </span>
         </div>
         <div className="flex flex-col gap-3 w-full sm:w-auto">

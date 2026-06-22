@@ -5,6 +5,7 @@ import { Mic, X, CheckCircle2, AlertCircle, Play, Square } from "lucide-react";
 import { parseVoiceInput, ParsedVoiceData } from "@/core/voice/VoiceParser";
 import { formatAmount } from "@/core/utils/currencyManager";
 import { checkAnomaly } from "@/core/utils/AnomalyRadar";
+import { addTransaction, getTransactions } from "@/core/store/dataStore";
 
 interface VoiceLoggingModalProps {
   isOpen: boolean;
@@ -97,9 +98,7 @@ export default function VoiceLoggingModal({
 
     // Check for anomalies if amount and category are present
     if (parsed.amount && parsed.category && parsed.type === "expense") {
-      const storedTransactions = localStorage.getItem("transactions");
-      const transactions = storedTransactions ? JSON.parse(storedTransactions) : [];
-      const warning = checkAnomaly(parsed.amount, parsed.category, transactions);
+      const warning = checkAnomaly(parsed.amount, parsed.category, getTransactions());
       setAnomalyWarning(warning);
     }
   };
@@ -107,29 +106,12 @@ export default function VoiceLoggingModal({
   const handleConfirm = () => {
     if (!parsedData || !parsedData.amount || !parsedData.type || !parsedData.category) return;
 
-    const storedTransactions = localStorage.getItem("transactions");
-    const transactions = storedTransactions ? JSON.parse(storedTransactions) : [];
-
-    const newTx = {
-      id: Math.random().toString(36).substring(2, 9),
+    addTransaction({
       amount: parsedData.amount,
       type: parsedData.type,
       category: parsedData.category,
       description: parsedData.description || `Voice entry: ${parsedData.category}`,
-      date: new Date().toISOString(),
-    };
-
-    localStorage.setItem("transactions", JSON.stringify([newTx, ...transactions]));
-
-    // Update totals
-    const currentIncome = Number(localStorage.getItem("total_income") || "75000");
-    const currentSavings = Number(localStorage.getItem("total_savings") || "22000");
-
-    if (parsedData.type === "income") {
-      localStorage.setItem("total_income", String(currentIncome + parsedData.amount));
-    } else {
-      localStorage.setItem("total_savings", String(Math.max(0, currentSavings - parsedData.amount)));
-    }
+    });
 
     setSuccess(true);
     setTimeout(() => {

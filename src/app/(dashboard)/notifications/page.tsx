@@ -11,37 +11,6 @@ interface NotificationItem {
   date: string;
 }
 
-const SEED_NOTES: NotificationItem[] = [
-  {
-    id: "note-1",
-    text: "Success: Your weekly financial health score computed at 75.",
-    type: "success",
-    read: false,
-    date: new Date().toISOString(),
-  },
-  {
-    id: "note-2",
-    text: "Warning: Category Groceries monthly budget utilization has crossed 80% thresholds.",
-    type: "alert",
-    read: false,
-    date: new Date().toISOString(),
-  },
-  {
-    id: "note-3",
-    text: "Error: Connection sync check failed on server cloud backup vaults.",
-    type: "error",
-    read: false,
-    date: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "note-4",
-    text: "System info: Backup ledger database successfully cloned to cache.",
-    type: "success",
-    read: true,
-    date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-];
-
 export default function NotificationsPage() {
   const [notes, setNotes] = useState<NotificationItem[]>([]);
 
@@ -80,13 +49,12 @@ export default function NotificationsPage() {
           setNotes(parsed);
         }
       } catch (e) {
-        // Fallback seed
-        setNotes(SEED_NOTES);
-        localStorage.setItem("notifications", JSON.stringify(SEED_NOTES));
+        // Malformed cache — start clean rather than fabricating data
+        setNotes([]);
       }
     } else {
-      setNotes(SEED_NOTES);
-      localStorage.setItem("notifications", JSON.stringify(SEED_NOTES));
+      // No notifications yet — alerts are generated from real activity (e.g. budget thresholds)
+      setNotes([]);
     }
   };
 

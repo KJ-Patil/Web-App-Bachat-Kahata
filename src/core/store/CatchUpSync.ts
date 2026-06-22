@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getTotals, getTotalSaved } from "@/core/store/dataStore";
 
 export interface CatchUpResult {
   executed: boolean;
@@ -14,12 +15,13 @@ const CATCHUP_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 7-day synchronization wind
  */
 function calculateFinancialHealthScore(): number {
   if (typeof window === "undefined") return 70;
-  
-  const totalIncome = Number(localStorage.getItem("total_income") || "75000");
-  const totalSavings = Number(localStorage.getItem("total_savings") || "22000");
-  
+
+  // Derived entirely from the user's real ledger — no fabricated defaults.
+  const totalIncome = getTotals().income;
+  const totalSavings = getTotalSaved();
+
   if (totalIncome <= 0) return 50;
-  
+
   const savingsRate = (totalSavings / totalIncome) * 100;
   const score = Math.round(40 + (savingsRate * 0.6));
   return Math.min(Math.max(score, 0), 100);

@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { Home, Settings, LogOut, Plus, Globe, List, BookOpen, BarChart3, Download, CreditCard, Mic, Users, Activity, SlidersHorizontal, Receipt, BrainCircuit, GraduationCap } from "lucide-react";
 import { useLazyCatchUpSync } from "@/core/store/CatchUpSync";
+import { clearFinancialData } from "@/core/store/dataStore";
 import AddTransactionModal from "@/components/modals/AddTransactionModal";
 import CurrencyPickerSheet from "@/components/modals/CurrencyPickerSheet";
 import VoiceLoggingModal from "@/components/voice/VoiceLoggingModal";
@@ -38,7 +39,18 @@ export default function DashboardLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  
+
+  // One-time purge of legacy seeded/demo data (the old fabricated balances).
+  // Runs exactly once per device, then never touches real data the user adds.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const CLEARED_FLAG = "legacy_seed_cleared_v1";
+    if (!localStorage.getItem(CLEARED_FLAG)) {
+      clearFinancialData();
+      localStorage.setItem(CLEARED_FLAG, "true");
+    }
+  }, []);
+
   // Trigger client-side Lazy CatchUp synchronization task
   useLazyCatchUpSync();
 
@@ -118,7 +130,7 @@ export default function DashboardLayout({
         </div>
 
         {/* Navigation Links */}
-        <nav className="flex-1 px-4 py-6 space-y-1">
+        <nav className="flex-1 overflow-y-auto px-4 py-6 space-y-1">
           {NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;

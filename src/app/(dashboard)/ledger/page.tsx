@@ -19,6 +19,8 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
+import { validatePhone, toFullNumber, getCountryByCurrency } from "@/core/utils/countries";
+import PhoneNumberInput from "@/components/inputs/PhoneNumberInput";
 
 export interface LedgerEntry {
   id: string;
@@ -37,126 +39,6 @@ export interface Customer {
   history: LedgerEntry[];
 }
 
-const SEED_CUSTOMERS: Customer[] = [
-  {
-    id: "cust-1",
-    name: "Arun Kumar",
-    phone: "+919876543210",
-    type: "customer",
-    balance: 4500,
-    history: [
-      {
-        id: "tx-c1a",
-        amount: 6000,
-        type: "gave",
-        description: "Credit sale of electrical materials",
-        date: new Date().toISOString(),
-      },
-      {
-        id: "tx-c1b",
-        amount: 1500,
-        type: "got",
-        description: "Partial payment received",
-        date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-    ],
-  },
-  {
-    id: "cust-2",
-    name: "Rajesh Gupta",
-    phone: "+919988776655",
-    type: "supplier",
-    balance: -2800,
-    history: [
-      {
-        id: "tx-c2a",
-        amount: 2800,
-        type: "got",
-        description: "Piping valve components supply",
-        date: new Date().toISOString(),
-      },
-    ],
-  },
-  {
-    id: "cust-3",
-    name: "Priya Sharma",
-    phone: "+919123456789",
-    type: "customer",
-    balance: 12000,
-    history: [
-      {
-        id: "tx-c3a",
-        amount: 15000,
-        type: "gave",
-        description: "Structured design consulting retainer",
-        date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        id: "tx-c3b",
-        amount: 3000,
-        type: "got",
-        description: "First milestone payment",
-        date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-    ],
-  },
-  {
-    id: "cust-4",
-    name: "Vikram Steel Works",
-    phone: "+919556789012",
-    type: "supplier",
-    balance: -8400,
-    history: [
-      {
-        id: "tx-c4a",
-        amount: 8400,
-        type: "got",
-        description: "TMT bar supply delivery #0417",
-        date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-    ],
-  },
-  {
-    id: "cust-5",
-    name: "Meena Traders",
-    phone: "+919334455667",
-    type: "customer",
-    balance: 0,
-    history: [
-      {
-        id: "tx-c5a",
-        amount: 2200,
-        type: "gave",
-        description: "Hardware fittings credit sale",
-        date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        id: "tx-c5b",
-        amount: 2200,
-        type: "got",
-        description: "Full settlement received",
-        date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-    ],
-  },
-  {
-    id: "cust-6",
-    name: "Sanjay Electricals",
-    phone: "+919887766554",
-    type: "customer",
-    balance: 7650,
-    history: [
-      {
-        id: "tx-c6a",
-        amount: 7650,
-        type: "gave",
-        description: "MCB panel box bulk order credit",
-        date: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-    ],
-  },
-];
-
 type FilterTab = "all" | "credit" | "debit" | "settled";
 
 export default function LedgerPage() {
@@ -168,7 +50,9 @@ export default function LedgerPage() {
 
   // New account form fields
   const [newName, setNewName] = useState("");
-  const [newPhone, setNewPhone] = useState("");
+  const [newPhone, setNewPhone] = useState(""); // national number (no dial code)
+  const [newCountry, setNewCountry] = useState("IN"); // ISO-2; defaults from active currency
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [newType, setNewType] = useState<"customer" | "supplier">("customer");
   const [initialBalance, setInitialBalance] = useState("");
 
@@ -180,20 +64,33 @@ export default function LedgerPage() {
     if (typeof window === "undefined") return;
 
     const cur = localStorage.getItem("active_currency");
-    if (cur) setActiveCurrency(cur);
+    if (cur) {
+      setActiveCurrency(cur);
+      // Pre-select the country whose currency matches the app's active currency.
+      const match = getCountryByCurrency(cur);
+      if (match) setNewCountry(match.iso2);
+    }
 
     const stored = localStorage.getItem("ledger_customers");
     if (stored) {
       setCustomers(JSON.parse(stored));
     } else {
-      localStorage.setItem("ledger_customers", JSON.stringify(SEED_CUSTOMERS));
-      setCustomers(SEED_CUSTOMERS);
+      // No customers/suppliers until the user adds them — no seeded accounts
+      setCustomers([]);
     }
   };
 
   const handleAddAccount = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName || !newPhone) return;
+    if (!newName) return;
+
+    // Validate the phone number against the selected country's digit rules.
+    const phoneValidationError = validatePhone(newCountry, newPhone);
+    if (phoneValidationError) {
+      setPhoneError(phoneValidationError);
+      return;
+    }
+    setPhoneError(null);
 
     const numBal = parseFloat(initialBalance) || 0;
     const finalBalance =
@@ -202,7 +99,7 @@ export default function LedgerPage() {
     const newCust: Customer = {
       id: Math.random().toString(36).substring(2, 9),
       name: newName,
-      phone: newPhone.startsWith("+") ? newPhone : `+91${newPhone}`,
+      phone: toFullNumber(newCountry, newPhone), // e.g. "+919876543210"
       type: newType,
       balance: finalBalance,
       history:
@@ -226,6 +123,7 @@ export default function LedgerPage() {
     // Clear form
     setNewName("");
     setNewPhone("");
+    setPhoneError(null);
     setNewType("customer");
     setInitialBalance("");
     setIsAddOpen(false);
@@ -615,22 +513,24 @@ export default function LedgerPage() {
                 />
               </div>
 
-              {/* Phone Number */}
+              {/* Phone Number — country-aware with per-country length limits */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">
                   Phone Number
                 </label>
-                <input
-                  type="tel"
+                <PhoneNumberInput
+                  country={newCountry}
+                  onCountryChange={(iso2) => {
+                    setNewCountry(iso2);
+                    setPhoneError(null);
+                  }}
                   value={newPhone}
-                  onChange={(e) => setNewPhone(e.target.value)}
-                  className="input-base w-full"
-                  placeholder="e.g. 9876543210"
-                  required
+                  onChange={(num) => {
+                    setNewPhone(num);
+                    if (phoneError) setPhoneError(null);
+                  }}
+                  error={phoneError}
                 />
-                <p className="text-[10px] text-foreground-muted">
-                  Used for WhatsApp reconciliation messages
-                </p>
               </div>
 
               {/* Initial Balance */}

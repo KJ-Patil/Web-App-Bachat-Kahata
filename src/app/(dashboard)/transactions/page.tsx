@@ -1,93 +1,34 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Search, Calendar, Edit2, Trash2, ArrowUpRight, ArrowDownRight, Tag, Check, AlertCircle, X } from "lucide-react";
+import { Search, Calendar, Edit2, Trash2, ArrowUpRight, ArrowDownRight, Tag, Check, AlertCircle, X, Plus } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
-
-interface Transaction {
-  id: string;
-  amount: number;
-  type: "expense" | "income";
-  category: string;
-  description: string;
-  date: string;
-}
-
-const MOCK_SEED_TRANSACTIONS: Transaction[] = [
-  {
-    id: "tx-1",
-    amount: 12500,
-    type: "expense",
-    category: "Housing",
-    description: "Monthly apartment maintenance fee",
-    date: new Date().toISOString(), // Today
-  },
-  {
-    id: "tx-2",
-    amount: 2400,
-    type: "expense",
-    category: "Groceries",
-    description: "Weekly organic vegetables",
-    date: new Date().toISOString(), // Today
-  },
-  {
-    id: "tx-3",
-    amount: 98000,
-    type: "income",
-    category: "Salary",
-    description: "Active income payroll",
-    date: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // Yesterday
-  },
-  {
-    id: "tx-4",
-    amount: 1800,
-    type: "expense",
-    category: "Entertainment",
-    description: "Cinema ticket with family",
-    date: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // Yesterday
-  },
-  {
-    id: "tx-5",
-    amount: 5000,
-    type: "expense",
-    category: "Investment",
-    description: "Mutual fund recurring deposit SIP",
-    date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), // Previous Weeks
-  },
-  {
-    id: "tx-6",
-    amount: 3200,
-    type: "expense",
-    category: "Transportation",
-    description: "Weekly fuel refill",
-    date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(), // Previous Weeks
-  },
-];
+import {
+  Transaction,
+  useTransactions,
+  updateTransaction as storeUpdateTransaction,
+  deleteTransaction as storeDeleteTransaction,
+} from "@/core/store/dataStore";
+import AddTransactionModal from "@/components/modals/AddTransactionModal";
 
 export default function TransactionsPage() {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const transactions = useTransactions();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"all" | "income" | "expense">("all");
   const [activeCurrency, setActiveCurrency] = useState("INR");
-  
+
   // Edit & Delete Actions State
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  // Initialize and load transactions
+  // Add Transaction modal (the list re-renders live via the useTransactions hook)
+  const [isAddOpen, setIsAddOpen] = useState(false);
+
+  // Load active currency preference
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("transactions");
-      if (stored) {
-        setTransactions(JSON.parse(stored));
-      } else {
-        // Seed default records on first load
-        localStorage.setItem("transactions", JSON.stringify(MOCK_SEED_TRANSACTIONS));
-        setTransactions(MOCK_SEED_TRANSACTIONS);
-      }
-
       const cur = localStorage.getItem("active_currency");
       if (cur) {
         setActiveCurrency(cur);
@@ -141,9 +82,7 @@ export default function TransactionsPage() {
 
   // Action: Trigger Inline Deletion
   const handleDelete = (id: string) => {
-    const updated = transactions.filter((t) => t.id !== id);
-    setTransactions(updated);
-    localStorage.setItem("transactions", JSON.stringify(updated));
+    storeDeleteTransaction(id);
     setDeleteConfirmId(null);
   };
 
@@ -152,19 +91,10 @@ export default function TransactionsPage() {
     const numAmount = parseFloat(editAmount);
     if (isNaN(numAmount) || numAmount <= 0) return;
 
-    const updated = transactions.map((t) => {
-      if (t.id === id) {
-        return {
-          ...t,
-          amount: numAmount,
-          description: editDescription,
-        };
-      }
-      return t;
+    storeUpdateTransaction(id, {
+      amount: numAmount,
+      description: editDescription,
     });
-
-    setTransactions(updated);
-    localStorage.setItem("transactions", JSON.stringify(updated));
     setEditingId(null);
   };
 
@@ -178,13 +108,22 @@ export default function TransactionsPage() {
   return (
     <div className="flex-1 flex flex-col p-6 space-y-6 md:p-8 max-w-5xl mx-auto w-full">
       {/* Header */}
-      <div className="space-y-1">
-        <h1 className="text-2xl font-extrabold text-foreground tracking-tight sm:text-3xl">
-          Ledger Workspace
-        </h1>
-        <p className="text-sm font-medium text-foreground-muted">
-          Review, filter, and audit active transactions.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-extrabold text-foreground tracking-tight sm:text-3xl">
+            Ledger Workspace
+          </h1>
+          <p className="text-sm font-medium text-foreground-muted">
+            Review, filter, and audit active transactions.
+          </p>
+        </div>
+        <button
+          onClick={() => setIsAddOpen(true)}
+          className="btn-primary shrink-0 flex items-center justify-center gap-2"
+        >
+          <Plus className="w-4 h-4" />
+          Add Transaction
+        </button>
       </div>
 
       {/* ────────────────── SEARCH AND FILTERS ────────────────── */}
@@ -393,6 +332,12 @@ export default function TransactionsPage() {
           </>
         )}
       </section>
+
+      {/* Add Transaction Modal */}
+      <AddTransactionModal
+        isOpen={isAddOpen}
+        onClose={() => setIsAddOpen(false)}
+      />
     </div>
   );
 }

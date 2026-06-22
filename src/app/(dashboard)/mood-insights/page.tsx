@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Smile, Meh, Frown, BrainCircuit, TrendingUp, AlertTriangle } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -13,17 +13,7 @@ import {
   Cell
 } from "recharts";
 import { formatAmount } from "@/core/utils/currencyManager";
-
-// Mock historical mood data correlating to spending
-const MOOD_DATA = [
-  { date: "Mon", spend: 450, mood: "Good" },
-  { date: "Tue", spend: 1200, mood: "Okay" },
-  { date: "Wed", spend: 3500, mood: "Stressed" },
-  { date: "Thu", spend: 300, mood: "Good" },
-  { date: "Fri", spend: 4100, mood: "Stressed" },
-  { date: "Sat", spend: 2200, mood: "Okay" },
-  { date: "Sun", spend: 800, mood: "Good" },
-];
+import { useTransactions } from "@/core/store/dataStore";
 
 const MOOD_COLORS: Record<string, string> = {
   Good: "#059669",     // text-success
@@ -31,26 +21,83 @@ const MOOD_COLORS: Record<string, string> = {
   Stressed: "#dc2626", // text-error
 };
 
+const MOOD_LOG_KEY = "mood_logs";
+
+// YYYY-MM-DD key for a given date (used to store/look up the day's mood).
+function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export default function MoodInsightsPage() {
   const [activeCurrency, setActiveCurrency] = useState("INR");
   const [currentMood, setCurrentMood] = useState<string | null>(null);
+  const [moodLogs, setMoodLogs] = useState<Record<string, string>>({});
   const [isMounted, setIsMounted] = useState(false);
+
+  const transactions = useTransactions();
 
   useEffect(() => {
     setIsMounted(true);
     if (typeof window !== "undefined") {
       const cur = localStorage.getItem("active_currency");
       if (cur) setActiveCurrency(cur);
+
+      try {
+        const stored = JSON.parse(localStorage.getItem(MOOD_LOG_KEY) || "{}");
+        setMoodLogs(stored);
+        const today = stored[dayKey(new Date())];
+        if (today) setCurrentMood(today);
+      } catch {
+        // Ignore malformed mood cache
+      }
     }
   }, []);
 
-  // Calculate Variance Insights
-  const stressedSpend = MOOD_DATA.filter(d => d.mood === "Stressed").reduce((acc, curr) => acc + curr.spend, 0);
-  const goodSpend = MOOD_DATA.filter(d => d.mood === "Good").reduce((acc, curr) => acc + curr.spend, 0);
-  
-  const avgStressed = stressedSpend / MOOD_DATA.filter(d => d.mood === "Stressed").length;
-  const avgGood = goodSpend / MOOD_DATA.filter(d => d.mood === "Good").length;
-  
+  // Persist the mood the user logs for today so the correlation builds over time.
+  const handleLogMood = (mood: string) => {
+    setCurrentMood(mood);
+    const updated = { ...moodLogs, [dayKey(new Date())]: mood };
+    setMoodLogs(updated);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(MOOD_LOG_KEY, JSON.stringify(updated));
+    }
+  };
+
+  // Real 7-day spend per day, tagged with the mood logged for that day.
+  const chartData = useMemo(() => {
+    const days: { date: string; key: string; spend: number; mood: string }[] = [];
+    const today = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+      days.push({
+        date: d.toLocaleDateString("en-US", { weekday: "short" }),
+        key: dayKey(d),
+        spend: 0,
+        mood: moodLogs[dayKey(d)] || "Okay",
+      });
+    }
+    const byKey = new Map(days.map((d) => [d.key, d]));
+    for (const tx of transactions) {
+      if (tx.type !== "expense") continue;
+      const k = dayKey(new Date(tx.date));
+      const bucket = byKey.get(k);
+      if (bucket) bucket.spend += tx.amount;
+    }
+    return days;
+  }, [transactions, moodLogs]);
+
+  const hasData = transactions.some((t) => t.type === "expense");
+
+  // Calculate Variance Insights from real data (guarded against empty buckets).
+  const stressedDays = chartData.filter((d) => d.mood === "Stressed");
+  const goodDays = chartData.filter((d) => d.mood === "Good");
+  const avgStressed = stressedDays.length
+    ? stressedDays.reduce((acc, c) => acc + c.spend, 0) / stressedDays.length
+    : 0;
+  const avgGood = goodDays.length
+    ? goodDays.reduce((acc, c) => acc + c.spend, 0) / goodDays.length
+    : 0;
+
   const variancePercent = avgGood > 0 ? ((avgStressed - avgGood) / avgGood) * 100 : 0;
 
   return (
@@ -75,7 +122,7 @@ export default function MoodInsightsPage() {
             
             <div className="grid grid-cols-3 gap-2">
               <button 
-                onClick={() => setCurrentMood("Good")}
+                onClick={() => handleLogMood("Good")}
                 className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${
                   currentMood === "Good" ? "border-success bg-success-light text-success scale-105" : "border-border bg-background hover:bg-secondary text-icon-muted"
                 }`}
@@ -85,7 +132,7 @@ export default function MoodInsightsPage() {
               </button>
               
               <button 
-                onClick={() => setCurrentMood("Okay")}
+                onClick={() => handleLogMood("Okay")}
                 className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${
                   currentMood === "Okay" ? "border-warning bg-warning-light text-warning scale-105" : "border-border bg-background hover:bg-secondary text-icon-muted"
                 }`}
@@ -95,7 +142,7 @@ export default function MoodInsightsPage() {
               </button>
               
               <button 
-                onClick={() => setCurrentMood("Stressed")}
+                onClick={() => handleLogMood("Stressed")}
                 className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${
                   currentMood === "Stressed" ? "border-error bg-error-light text-error scale-105" : "border-border bg-background hover:bg-secondary text-icon-muted"
                 }`}
@@ -156,9 +203,16 @@ export default function MoodInsightsPage() {
           </div>
 
           <div className="flex-1 w-full h-full min-h-[250px]">
-            {isMounted && (
+            {isMounted && !hasData ? (
+              <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-background-subtle rounded-xl text-center px-6">
+                <BrainCircuit className="w-8 h-8 text-icon-muted" />
+                <p className="text-xs font-medium text-foreground-muted max-w-xs">
+                  No spending recorded yet. As you add expenses and log your daily mood, your correlation will appear here.
+                </p>
+              </div>
+            ) : isMounted && (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={MOOD_DATA} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                <BarChart data={chartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                   <XAxis 
                     dataKey="date" 
@@ -202,7 +256,7 @@ export default function MoodInsightsPage() {
                     }}
                   />
                   <Bar dataKey="spend" radius={[4, 4, 0, 0]} maxBarSize={40}>
-                    {MOOD_DATA.map((entry, index) => (
+                    {chartData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={MOOD_COLORS[entry.mood]} />
                     ))}
                   </Bar>

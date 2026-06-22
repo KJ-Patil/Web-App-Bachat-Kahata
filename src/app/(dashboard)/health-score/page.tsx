@@ -3,6 +3,13 @@
 import React, { useState, useEffect } from "react";
 import { Activity, ShieldCheck, AlertCircle, Zap, Target } from "lucide-react";
 import { computeHealthScore, getHealthRecommendations, HealthMetrics } from "@/core/math/HealthEngine";
+import {
+  getTotals,
+  getTotalSaved,
+  getTotalDebt,
+  getBudgets,
+  getMonthTotals,
+} from "@/core/store/dataStore";
 
 export default function HealthScorePage() {
   const [metrics, setMetrics] = useState<HealthMetrics | null>(null);
@@ -12,17 +19,20 @@ export default function HealthScorePage() {
   useEffect(() => {
     setIsMounted(true);
     if (typeof window !== "undefined") {
-      // Pull dynamic or mock data from local state
-      const income = Number(localStorage.getItem("total_income") || "85000");
-      const savings = Number(localStorage.getItem("total_savings") || "45000");
-      
-      // Calculate derived metrics
-      // In a real app, you'd aggregate recent expenses
-      const expenses = 55000;
-      const debt = 12000;
-      const budgetAdherence = 95; // 95% usage of budget
+      // Aggregate the user's real ledger — no fabricated defaults.
+      const { income, expense } = getTotals();
+      const savings = getTotalSaved();
+      const debt = getTotalDebt();
 
-      const calculatedMetrics = computeHealthScore(income, expenses, savings, debt, budgetAdherence);
+      // Budget adherence: how much of the configured monthly budget is consumed
+      // by this month's spend (100% when no budget has been set yet).
+      const budgets = getBudgets();
+      const totalBudget = Object.values(budgets).reduce((a, b) => a + b, 0);
+      const monthExpense = getMonthTotals(0).expense;
+      const budgetAdherence =
+        totalBudget > 0 ? Math.min(Math.round((monthExpense / totalBudget) * 100), 100) : 100;
+
+      const calculatedMetrics = computeHealthScore(income, expense, savings, debt, budgetAdherence);
       setMetrics(calculatedMetrics);
       setRecommendations(getHealthRecommendations(calculatedMetrics));
     }

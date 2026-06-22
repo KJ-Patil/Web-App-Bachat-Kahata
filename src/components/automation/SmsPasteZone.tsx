@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { parseSmsMessage, type ParsedSmsTransaction } from "@/core/automation/SmsParser";
 import { formatAmount } from "@/core/utils/currencyManager";
+import { addTransaction } from "@/core/store/dataStore";
 
 // ─── Sub-component: Parsed result confirmation sheet ─────────────────────────
 
@@ -201,22 +202,13 @@ export default function SmsPasteZone({
   // ── Save confirmed transaction to localStorage ledger ────────────────────
   const handleSave = useCallback(
     (tx: ParsedSmsTransaction) => {
-      const stored = localStorage.getItem("transactions");
-      const transactions = stored ? JSON.parse(stored) : [];
-
-      const newEntry = {
-        id: Math.random().toString(36).substring(2, 9),
+      addTransaction({
         amount: tx.amount,
         type: tx.type,
         category: tx.type === "income" ? "Salary" : "Other",
         description: tx.description,
         date: tx.date,
-      };
-
-      localStorage.setItem(
-        "transactions",
-        JSON.stringify([newEntry, ...transactions])
-      );
+      });
 
       setParsed(null);
       setInputValue("");

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight, Edit3, Home, ShoppingBag, Tv, Layers, ShieldCheck, AlertTriangle, Play } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
 import SetBudgetModal from "@/components/modals/SetBudgetModal";
+import { getBudgets, getTransactions } from "@/core/store/dataStore";
 
 interface CategorySummary {
   id: string;
@@ -12,13 +13,6 @@ interface CategorySummary {
   spent: number;
   limit: number;
 }
-
-const DEFAULT_BUDGETS: Record<string, number> = {
-  Housing: 25000,
-  Groceries: 12000,
-  Entertainment: 6000,
-  Investment: 20000,
-};
 
 const CATEGORIES_META = [
   { id: "Housing", name: "Housing", icon: Home },
@@ -29,7 +23,7 @@ const CATEGORIES_META = [
 
 export default function BudgetsPage() {
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [budgets, setBudgets] = useState<Record<string, number>>(DEFAULT_BUDGETS);
+  const [budgets, setBudgets] = useState<Record<string, number>>({});
   const [categorySummaries, setCategorySummaries] = useState<CategorySummary[]>([]);
   const [activeCurrency, setActiveCurrency] = useState("INR");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -45,24 +39,22 @@ export default function BudgetsPage() {
     const cur = localStorage.getItem("active_currency");
     if (cur) setActiveCurrency(cur);
 
-    // Load budgets
-    const storedBudgets = localStorage.getItem("budgets");
-    const activeBudgets = storedBudgets ? JSON.parse(storedBudgets) : DEFAULT_BUDGETS;
+    // Load budgets (empty until the user configures them — no fabricated caps)
+    const activeBudgets = getBudgets();
     setBudgets(activeBudgets);
 
     // Load transactions
-    const storedTxs = localStorage.getItem("transactions");
-    const transactions = storedTxs ? JSON.parse(storedTxs) : [];
+    const transactions = getTransactions();
 
     const targetMonth = selectedDate.getMonth();
     const targetYear = selectedDate.getFullYear();
 
     // Map summaries
     const summaries = CATEGORIES_META.map((meta) => {
-      const limit = activeBudgets[meta.id] || DEFAULT_BUDGETS[meta.id] || 10000;
-      
+      const limit = activeBudgets[meta.id] || 0;
+
       const spent = transactions
-        .filter((tx: any) => {
+        .filter((tx) => {
           const txDate = new Date(tx.date);
           return (
             tx.type === "expense" &&
@@ -71,7 +63,7 @@ export default function BudgetsPage() {
             txDate.getFullYear() === targetYear
           );
         })
-        .reduce((sum: number, tx: any) => sum + tx.amount, 0);
+        .reduce((sum, tx) => sum + tx.amount, 0);
 
       return {
         id: meta.id,
@@ -172,9 +164,10 @@ export default function BudgetsPage() {
       <section className="space-y-4">
         {categorySummaries.map((summary) => {
           const Icon = summary.icon;
-          const pct = Math.min(Math.round((summary.spent / summary.limit) * 100), 200);
-          const isOver = summary.spent >= summary.limit;
-          const isWarning = summary.spent / summary.limit >= 0.8 && !isOver;
+          const hasLimit = summary.limit > 0;
+          const pct = hasLimit ? Math.min(Math.round((summary.spent / summary.limit) * 100), 200) : 0;
+          const isOver = hasLimit && summary.spent >= summary.limit;
+          const isWarning = hasLimit && summary.spent / summary.limit >= 0.8 && !isOver;
 
           return (
             <div
@@ -199,7 +192,7 @@ export default function BudgetsPage() {
                   <div>
                     <h3 className="font-extrabold text-foreground text-sm">{summary.name}</h3>
                     <span className="text-[10px] font-bold text-foreground-secondary tracking-wide uppercase">
-                      Budget: {formatAmount(summary.limit, activeCurrency)}
+                      {hasLimit ? `Budget: ${formatAmount(summary.limit, activeCurrency)}` : "No budget set"}
                     </span>
                   </div>
                 </div>
@@ -212,7 +205,7 @@ export default function BudgetsPage() {
                     {formatAmount(summary.spent, activeCurrency)}
                   </span>
                   <span className="text-[10px] font-semibold text-foreground-muted block">
-                    {pct}% consumed
+                    {hasLimit ? `${pct}% consumed` : "Tap Adjust Budgets to set a cap"}
                   </span>
                 </div>
               </div>
@@ -230,7 +223,12 @@ export default function BudgetsPage() {
                 </div>
 
                 {/* Exceeded / Approaching alert labels */}
-                {isOver ? (
+                {!hasLimit ? (
+                  <span className="text-[10px] font-bold text-foreground-muted flex items-center gap-1 mt-1">
+                    <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                    Spent {formatAmount(summary.spent, activeCurrency)} this month — no limit configured.
+                  </span>
+                ) : isOver ? (
                   <span className="text-[10px] font-bold text-error flex items-center gap-1 mt-1">
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                     Budget ceiling breached by {formatAmount(summary.spent - summary.limit, activeCurrency)}!
