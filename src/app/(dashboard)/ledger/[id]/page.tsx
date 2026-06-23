@@ -19,6 +19,13 @@ import {
 } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
 import { Customer, LedgerEntry } from "../page";
+import {
+  getLedgerCustomers,
+  setLedgerCustomers,
+  addTransaction,
+  deleteTransaction,
+  generateId,
+} from "@/core/store/dataStore";
 
 export default function CustomerLedgerPage({
   params,
@@ -43,30 +50,29 @@ export default function CustomerLedgerPage({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   useEffect(() => {
-    loadCustomerDetails();
-  }, [customerId]);
-
-  const loadCustomerDetails = () => {
     if (typeof window === "undefined") return;
-    setLoading(true);
 
-    const cur = localStorage.getItem("active_currency");
-    if (cur) setActiveCurrency(cur);
-
-    const stored = localStorage.getItem("ledger_customers");
-    if (stored) {
-      const customersList: Customer[] = JSON.parse(stored);
-      const found = customersList.find((c) => c.id === customerId);
+    // Re-derive this customer whenever the ledger store changes (local edits,
+    // cross-tab writes, or remote Firestore sync).
+    const sync = () => {
+      const cur = localStorage.getItem("active_currency");
+      if (cur) setActiveCurrency(cur);
+      const found = getLedgerCustomers().find((c) => c.id === customerId);
       if (found) {
         setCustomer(found);
       } else {
         router.push("/ledger");
       }
-    } else {
-      router.push("/ledger");
-    }
-    setLoading(false);
-  };
+      setLoading(false);
+    };
+    sync();
+    window.addEventListener("datastore:change", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("datastore:change", sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, [customerId, router]);
 
   if (loading) {
     return (
@@ -84,10 +90,8 @@ export default function CustomerLedgerPage({
     if (isNaN(numAmount) || numAmount <= 0) return;
 
     // Load active lists
-    const stored = localStorage.getItem("ledger_customers");
-    if (!stored) return;
-
-    const customersList: Customer[] = JSON.parse(stored);
+    const customersList = getLedgerCustomers();
+    if (customersList.length === 0) return;
 
     // Calculate new balance
     // Gave: we gave goods/money, they owe us more (increases balance)
@@ -95,13 +99,25 @@ export default function CustomerLedgerPage({
     const balanceAdjustment = entryType === "gave" ? numAmount : -numAmount;
     const nextBalance = customer.balance + balanceAdjustment;
 
+    const entryDescription =
+      description || (entryType === "gave" ? "Gave credit" : "Got payment");
+
+    // Mirror into the transactions ledger through the data store so the change
+    // syncs to the DB, fires the change event, and updates the dashboard totals.
+    const tx = addTransaction({
+      amount: numAmount,
+      type: entryType === "gave" ? "expense" : "income",
+      category: "Ledger",
+      description: `${entryType === "gave" ? "Gave to" : "Got from"} ${customer.name}: ${entryDescription}`,
+    });
+
     const newLog: LedgerEntry = {
-      id: Math.random().toString(36).substring(2, 9),
+      id: generateId(),
       amount: numAmount,
       type: entryType,
-      description:
-        description || (entryType === "gave" ? "Gave credit" : "Got payment"),
-      date: new Date().toISOString(),
+      description: entryDescription,
+      date: tx.date,
+      txId: tx.id,
     };
 
     const updatedCust: Customer = {
@@ -113,25 +129,8 @@ export default function CustomerLedgerPage({
     const updatedList = customersList.map((c) =>
       c.id === customer.id ? updatedCust : c
     );
-    localStorage.setItem("ledger_customers", JSON.stringify(updatedList));
+    setLedgerCustomers(updatedList);
     setCustomer(updatedCust);
-
-    // Also update overall transaction buffers for cash index tracking
-    const storedTxs = localStorage.getItem("transactions");
-    const transactions = storedTxs ? JSON.parse(storedTxs) : [];
-
-    const newTx = {
-      id: Math.random().toString(36).substring(2, 9),
-      amount: numAmount,
-      type: entryType === "gave" ? "expense" : "income",
-      category: "Housing",
-      description: `${entryType === "gave" ? "Gave to" : "Got from"} ${customer.name}: ${newLog.description}`,
-      date: new Date().toISOString(),
-    };
-    localStorage.setItem(
-      "transactions",
-      JSON.stringify([newTx, ...transactions])
-    );
 
     // Clear state
     setAmount("");
@@ -140,12 +139,14 @@ export default function CustomerLedgerPage({
   };
 
   const handleDeleteEntry = (entryId: string) => {
-    const stored = localStorage.getItem("ledger_customers");
-    if (!stored) return;
+    const customersList = getLedgerCustomers();
+    if (customersList.length === 0) return;
 
-    const customersList: Customer[] = JSON.parse(stored);
     const entry = customer.history.find((h) => h.id === entryId);
     if (!entry) return;
+
+    // Remove the linked transaction so the dashboard totals reverse too.
+    if (entry.txId) deleteTransaction(entry.txId);
 
     // Reverse the balance effect
     const balanceReverse = entry.type === "gave" ? -entry.amount : entry.amount;
@@ -160,7 +161,7 @@ export default function CustomerLedgerPage({
     const updatedList = customersList.map((c) =>
       c.id === customer.id ? updatedCust : c
     );
-    localStorage.setItem("ledger_customers", JSON.stringify(updatedList));
+    setLedgerCustomers(updatedList);
     setCustomer(updatedCust);
     setDeleteConfirmId(null);
   };

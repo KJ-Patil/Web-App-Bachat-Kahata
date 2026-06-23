@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { User, Lock, Globe, Fingerprint, Trash2, ArrowRight, ShieldAlert, LogOut, CheckCircle2, Layers, Mail } from "lucide-react";
 import CurrencyPickerSheet from "@/components/modals/CurrencyPickerSheet";
+import { clearFinancialData } from "@/core/store/dataStore";
 
 export default function SettingsPage() {
   const [activeCurrency, setActiveCurrency] = useState("INR");
@@ -67,6 +68,7 @@ export default function SettingsPage() {
 
   // Actually wipe the data and show the success stage
   const purgeData = () => {
+    clearFinancialData(); // Push empty state to Firestore to clear remote data
     localStorage.clear();
     // Keep currency preference just in case, or truly purge everything.
     localStorage.setItem("active_currency", "INR");

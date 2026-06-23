@@ -3,16 +3,9 @@
 import React, { useState, useEffect, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Users, Receipt, Plus, Settings, CheckCircle2, TrendingDown } from "lucide-react";
+import { ArrowLeft, Users, Receipt, Plus, Settings, CheckCircle2, TrendingDown, AlertTriangle } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
-
-interface GroupExpense {
-  id: string;
-  amount: number;
-  description: string;
-  paidBy: string; // Member name
-  date: string;
-}
+import { GroupExpense, useFamilyGroups, setFamilyGroups, useFamilyExpenses, setFamilyExpenses } from "@/core/store/dataStore";
 
 export default function FamilyGroupPage({
   params,
@@ -23,61 +16,70 @@ export default function FamilyGroupPage({
   const resolvedParams = use(params);
   const groupId = resolvedParams.groupId;
 
-  const [group, setGroup] = useState<any>(null);
+  const groups = useFamilyGroups();
+  const allExpenses = useFamilyExpenses();
+  const group = groups.find((g) => g.id === groupId);
+  const expenses = allExpenses.filter((e) => e.groupId === groupId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
   const [activeCurrency, setActiveCurrency] = useState("INR");
-  const [expenses, setExpenses] = useState<GroupExpense[]>([]);
   
+  const isOverLimit = group?.spendingLimit && group.spendingLimit > 0 && group.totalBalance > group.spendingLimit;
+
   // Claim overlay
   const [isClaimOpen, setIsClaimOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
 
+  // Limit overlay
+  const [isLimitOpen, setIsLimitOpen] = useState(false);
+  const [limitInput, setLimitInput] = useState("");
+
+  const handleOpenLimit = () => {
+    setLimitInput(group?.spendingLimit?.toString() || "");
+    setIsLimitOpen(true);
+  };
+
+  const handleSaveLimit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const num = parseFloat(limitInput);
+    if (isNaN(num)) return; 
+
+    const updatedGroups = groups.map((g) => g.id === groupId ? { ...g, spendingLimit: num } : g);
+    setFamilyGroups(updatedGroups);
+    setIsLimitOpen(false);
+  };
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       const cur = localStorage.getItem("active_currency");
       if (cur) setActiveCurrency(cur);
-
-      const stored = localStorage.getItem("family_groups");
-      if (stored) {
-        const groups = JSON.parse(stored);
-        const found = groups.find((g: any) => g.id === groupId);
-        if (found) {
-          setGroup(found);
-          // Seed some dummy expenses for visualization
-          setExpenses([
-            { id: "e1", amount: 1200, description: "Dinner out", paidBy: "You", date: new Date().toISOString() },
-            { id: "e2", amount: 450, description: "Groceries top-up", paidBy: "Rohan", date: new Date(Date.now() - 86400000).toISOString() }
-          ]);
-        } else {
-          router.push("/family-wallet");
-        }
-      }
     }
-  }, [groupId]);
+  }, []);
+
+  useEffect(() => {
+    if (groups.length > 0 && !group) {
+      router.push("/family-wallet");
+    }
+  }, [group, groups, router]);
 
   const handleAddClaim = (e: React.FormEvent) => {
     e.preventDefault();
     const num = parseFloat(amount);
-    if (!num) return;
+    if (!num || !group) return;
 
     const newExp: GroupExpense = {
-      id: Math.random().toString(),
+      id: Math.random().toString(36).substring(2, 9),
+      groupId: groupId,
       amount: num,
       description: description || "Expense claim",
       paidBy: "You",
       date: new Date().toISOString(),
     };
 
-    setExpenses([newExp, ...expenses]);
-    setGroup({ ...group, totalBalance: group.totalBalance + num });
+    setFamilyExpenses([newExp, ...allExpenses]);
     
-    // Update local storage
-    const stored = localStorage.getItem("family_groups");
-    if (stored) {
-      const groups = JSON.parse(stored);
-      const updated = groups.map((g: any) => g.id === groupId ? { ...g, totalBalance: g.totalBalance + num } : g);
-      localStorage.setItem("family_groups", JSON.stringify(updated));
-    }
+    const updatedGroups = groups.map((g) => g.id === groupId ? { ...g, totalBalance: g.totalBalance + num } : g);
+    setFamilyGroups(updatedGroups);
 
     setAmount("");
     setDescription("");
@@ -115,12 +117,27 @@ export default function FamilyGroupPage({
         </div>
 
         <div className="text-left sm:text-right space-y-1">
-          <span className="text-3xl font-black tracking-tight text-primary">
-            {formatAmount(group.totalBalance, activeCurrency)}
-          </span>
-          <span className="text-[10px] font-bold uppercase tracking-wider block text-primary/70">
-            Total Group Pool
-          </span>
+          <div className="flex flex-col sm:items-end">
+            {isOverLimit && (
+              <div className="flex items-center gap-1.5 text-red-500 mb-1">
+                <AlertTriangle className="w-4 h-4 animate-bounce" />
+                <span className="text-xs font-bold uppercase tracking-wider">Limit Exceeded</span>
+              </div>
+            )}
+            <div className="flex items-end sm:justify-end gap-2">
+              <span className={`text-3xl font-black tracking-tight ${isOverLimit ? 'text-red-500' : 'text-primary'}`}>
+                {formatAmount(group.totalBalance, activeCurrency)}
+              </span>
+              {group.spendingLimit && group.spendingLimit > 0 ? (
+                <span className={`text-sm font-bold mb-1 ${isOverLimit ? 'text-red-500/70' : 'text-primary/50'}`}>
+                  / {formatAmount(group.spendingLimit, activeCurrency)}
+                </span>
+              ) : null}
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-wider block text-primary/70 mt-1">
+              Total Group Pool
+            </span>
+          </div>
         </div>
       </section>
 
@@ -133,7 +150,10 @@ export default function FamilyGroupPage({
           <Receipt className="w-5 h-5" />
           Add Expense Claim
         </button>
-        <button className="bg-card border border-border text-foreground px-6 py-4 rounded-xl font-bold flex items-center gap-2 hover:bg-secondary">
+        <button 
+          onClick={handleOpenLimit}
+          className="bg-card border border-border text-foreground px-6 py-4 rounded-xl font-bold flex items-center gap-2 hover:bg-secondary"
+        >
           <Settings className="w-5 h-5" />
           Limits
         </button>
@@ -198,6 +218,35 @@ export default function FamilyGroupPage({
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setIsClaimOpen(false)} className="btn-secondary flex-1">Cancel</button>
                 <button type="submit" className="btn-primary flex-1">Submit</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Set Limit Overlay */}
+      {isLimitOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in duration-200">
+          <div className="w-full bg-card border border-border rounded-2xl max-w-sm shadow-2xl p-6 space-y-4">
+            <h3 className="text-lg font-black text-foreground text-center">Set Group Limit</h3>
+            <p className="text-xs text-foreground-muted text-center">
+              Set a maximum spending limit for this shared wallet (enter 0 for no limit).
+            </p>
+            <form onSubmit={handleSaveLimit} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-foreground-secondary uppercase">Limit Amount</label>
+                <input
+                  type="number"
+                  value={limitInput}
+                  onChange={(e) => setLimitInput(e.target.value)}
+                  className="input-base w-full"
+                  placeholder="e.g. 5000"
+                  required
+                />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setIsLimitOpen(false)} className="btn-secondary flex-1">Cancel</button>
+                <button type="submit" className="btn-primary flex-1">Save Limit</button>
               </div>
             </form>
           </div>

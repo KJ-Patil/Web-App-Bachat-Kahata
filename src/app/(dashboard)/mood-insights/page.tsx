@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { Smile, Meh, Frown, BrainCircuit, TrendingUp, AlertTriangle } from "lucide-react";
+import { Smile, Meh, Frown, BrainCircuit, TrendingUp, AlertTriangle, ArrowDownRight, ArrowUpRight } from "lucide-react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -33,6 +33,7 @@ export default function MoodInsightsPage() {
   const [currentMood, setCurrentMood] = useState<string | null>(null);
   const [moodLogs, setMoodLogs] = useState<Record<string, string>>({});
   const [isMounted, setIsMounted] = useState(false);
+  const [viewMode, setViewMode] = useState<"expense" | "income">("expense");
 
   const transactions = useTransactions();
 
@@ -63,9 +64,9 @@ export default function MoodInsightsPage() {
     }
   };
 
-  // Real 7-day spend per day, tagged with the mood logged for that day.
+  // Real 7-day spend/income per day, tagged with the mood logged for that day.
   const chartData = useMemo(() => {
-    const days: { date: string; key: string; spend: number; mood: string }[] = [];
+    const days: { date: string; key: string; spend: number; income: number; mood: string }[] = [];
     const today = new Date();
     for (let i = 6; i >= 0; i--) {
       const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
@@ -73,32 +74,40 @@ export default function MoodInsightsPage() {
         date: d.toLocaleDateString("en-US", { weekday: "short" }),
         key: dayKey(d),
         spend: 0,
+        income: 0,
         mood: moodLogs[dayKey(d)] || "Okay",
       });
     }
     const byKey = new Map(days.map((d) => [d.key, d]));
     for (const tx of transactions) {
-      if (tx.type !== "expense") continue;
       const k = dayKey(new Date(tx.date));
       const bucket = byKey.get(k);
-      if (bucket) bucket.spend += tx.amount;
+      if (bucket) {
+        if (tx.type === "expense") bucket.spend += tx.amount;
+        if (tx.type === "income") bucket.income += tx.amount;
+      }
     }
     return days;
   }, [transactions, moodLogs]);
 
-  const hasData = transactions.some((t) => t.type === "expense");
+  const hasData = transactions.some((t) => t.type === viewMode);
 
   // Calculate Variance Insights from real data (guarded against empty buckets).
   const stressedDays = chartData.filter((d) => d.mood === "Stressed");
   const goodDays = chartData.filter((d) => d.mood === "Good");
-  const avgStressed = stressedDays.length
-    ? stressedDays.reduce((acc, c) => acc + c.spend, 0) / stressedDays.length
-    : 0;
-  const avgGood = goodDays.length
-    ? goodDays.reduce((acc, c) => acc + c.spend, 0) / goodDays.length
-    : 0;
+  
+  const avgStressedSpend = stressedDays.length
+    ? stressedDays.reduce((acc, c) => acc + c.spend, 0) / stressedDays.length : 0;
+  const avgGoodSpend = goodDays.length
+    ? goodDays.reduce((acc, c) => acc + c.spend, 0) / goodDays.length : 0;
 
-  const variancePercent = avgGood > 0 ? ((avgStressed - avgGood) / avgGood) * 100 : 0;
+  const avgStressedIncome = stressedDays.length
+    ? stressedDays.reduce((acc, c) => acc + c.income, 0) / stressedDays.length : 0;
+  const avgGoodIncome = goodDays.length
+    ? goodDays.reduce((acc, c) => acc + c.income, 0) / goodDays.length : 0;
+
+  const spendVariancePercent = avgGoodSpend > 0 ? ((avgStressedSpend - avgGoodSpend) / avgGoodSpend) * 100 : 0;
+  const incomeVariancePercent = avgStressedIncome > 0 ? ((avgGoodIncome - avgStressedIncome) / avgStressedIncome) * 100 : 0;
 
   return (
     <div className="flex-1 flex flex-col p-6 space-y-8 md:p-8 max-w-5xl mx-auto w-full">
@@ -109,7 +118,7 @@ export default function MoodInsightsPage() {
           Behavioral Insights
         </h1>
         <p className="text-sm font-medium text-foreground-muted">
-          Map your emotional states to your spending patterns to identify stress-induced purchases.
+          Map your emotional states to your spending and earning patterns to identify stress-induced habits.
         </p>
       </div>
 
@@ -158,47 +167,92 @@ export default function MoodInsightsPage() {
             )}
           </div>
 
-          <div className="bg-error-light border border-error/20 p-6 rounded-2xl shadow-sm space-y-3">
-            <h3 className="font-extrabold text-error flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5" />
-              Variance Alert
-            </h3>
-            <p className="text-sm font-semibold text-error/80 leading-relaxed">
-              You tend to spend <span className="font-black text-error text-base">{Math.round(variancePercent)}% more</span> on days you report feeling <strong>Stressed</strong> compared to Good days.
-            </p>
-            <div className="pt-2 flex justify-between items-end border-t border-error/20 mt-2">
-              <div>
-                <span className="text-[10px] font-bold text-error/60 uppercase">Avg Stressed Spend</span>
-                <span className="block font-black text-error">{formatAmount(avgStressed, activeCurrency)}</span>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] font-bold text-error/60 uppercase">Avg Good Spend</span>
-                <span className="block font-black text-error">{formatAmount(avgGood, activeCurrency)}</span>
+          {viewMode === "expense" ? (
+            <div className="bg-error-light border border-error/20 p-6 rounded-2xl shadow-sm space-y-3">
+              <h3 className="font-extrabold text-error flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5" />
+                Variance Alert
+              </h3>
+              <p className="text-sm font-semibold text-error/80 leading-relaxed">
+                You tend to spend <span className="font-black text-error text-base">{Math.round(spendVariancePercent)}% more</span> on days you report feeling <strong>Stressed</strong> compared to Good days.
+              </p>
+              <div className="pt-2 flex justify-between items-end border-t border-error/20 mt-2">
+                <div>
+                  <span className="text-[10px] font-bold text-error/60 uppercase">Avg Stressed Spend</span>
+                  <span className="block font-black text-error">{formatAmount(avgStressedSpend, activeCurrency)}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold text-error/60 uppercase">Avg Good Spend</span>
+                  <span className="block font-black text-error">{formatAmount(avgGoodSpend, activeCurrency)}</span>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="bg-success-light border border-success/20 p-6 rounded-2xl shadow-sm space-y-3">
+              <h3 className="font-extrabold text-success flex items-center gap-2">
+                <TrendingUp className="w-5 h-5" />
+                The Hustle Alert
+              </h3>
+              <p className="text-sm font-semibold text-success/80 leading-relaxed">
+                You tend to earn <span className="font-black text-success text-base">{Math.round(incomeVariancePercent)}% more</span> on days you report feeling <strong>Good</strong> compared to Stressed days.
+              </p>
+              <div className="pt-2 flex justify-between items-end border-t border-success/20 mt-2">
+                <div>
+                  <span className="text-[10px] font-bold text-success/60 uppercase">Avg Good Earn</span>
+                  <span className="block font-black text-success">{formatAmount(avgGoodIncome, activeCurrency)}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold text-success/60 uppercase">Avg Stressed Earn</span>
+                  <span className="block font-black text-success">{formatAmount(avgStressedIncome, activeCurrency)}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right Column: Chart */}
         <div className="lg:col-span-2 bg-card border border-border p-6 rounded-2xl shadow-sm space-y-6 flex flex-col min-h-[400px]">
-          <div className="flex justify-between items-start">
-            <div className="space-y-1">
-              <h3 className="font-extrabold text-foreground flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-brand" />
-                Mood vs. Spending Trajectory
-              </h3>
-              <p className="text-xs text-foreground-muted">
-                7-day rolling view of your emotional finance correlation.
-              </p>
+          <div className="flex flex-col xl:flex-row justify-between items-start gap-4">
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <h3 className="font-extrabold text-foreground flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-brand" />
+                  Mood vs. {viewMode === "expense" ? "Spending" : "Earning"} Trajectory
+                </h3>
+                <p className="text-xs text-foreground-muted">
+                  7-day rolling view of your emotional finance correlation.
+                </p>
+              </div>
+              
+              <div className="flex gap-3 text-[10px] font-bold">
+                {Object.entries(MOOD_COLORS).map(([mood, color]) => (
+                  <div key={mood} className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+                    <span className="text-foreground-secondary uppercase">{mood}</span>
+                  </div>
+                ))}
+              </div>
             </div>
             
-            <div className="flex gap-3 text-[10px] font-bold">
-              {Object.entries(MOOD_COLORS).map(([mood, color]) => (
-                <div key={mood} className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-                  <span className="text-foreground-secondary uppercase">{mood}</span>
-                </div>
-              ))}
+            <div className="flex bg-background-subtle border border-border rounded-lg p-1 shadow-inner shrink-0">
+              <button
+                onClick={() => setViewMode("expense")}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-xs font-bold transition-colors ${
+                  viewMode === "expense" ? "bg-card text-error shadow-sm border border-border" : "text-icon-muted hover:text-foreground"
+                }`}
+              >
+                <ArrowDownRight className="w-4 h-4" />
+                Expenses
+              </button>
+              <button
+                onClick={() => setViewMode("income")}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-xs font-bold transition-colors ${
+                  viewMode === "income" ? "bg-card text-success shadow-sm border border-border" : "text-icon-muted hover:text-foreground"
+                }`}
+              >
+                <ArrowUpRight className="w-4 h-4" />
+                Income
+              </button>
             </div>
           </div>
 
@@ -207,7 +261,7 @@ export default function MoodInsightsPage() {
               <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-background-subtle rounded-xl text-center px-6">
                 <BrainCircuit className="w-8 h-8 text-icon-muted" />
                 <p className="text-xs font-medium text-foreground-muted max-w-xs">
-                  No spending recorded yet. As you add expenses and log your daily mood, your correlation will appear here.
+                  No {viewMode}s recorded yet. As you add transactions and log your daily mood, your correlation will appear here.
                 </p>
               </div>
             ) : isMounted && (
@@ -240,7 +294,7 @@ export default function MoodInsightsPage() {
                             </span>
                             <div className="flex items-center justify-between gap-4">
                               <span className="text-sm font-black text-foreground">
-                                {formatAmount(data.spend, activeCurrency)}
+                                {formatAmount(viewMode === "expense" ? data.spend : data.income, activeCurrency)}
                               </span>
                               <span 
                                 className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md text-white"
@@ -255,7 +309,7 @@ export default function MoodInsightsPage() {
                       return null;
                     }}
                   />
-                  <Bar dataKey="spend" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                  <Bar dataKey={viewMode === "expense" ? "spend" : "income"} radius={[4, 4, 0, 0]} maxBarSize={40}>
                     {chartData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={MOOD_COLORS[entry.mood]} />
                     ))}

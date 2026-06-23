@@ -231,11 +231,11 @@ export default function SmsPasteZone({
       setParsed(null);
       setInputValue("");
       setUiState("idle");
+      setIsExpanded(false);
     } else {
       setIsExpanded(true);
       setTimeout(() => textareaRef.current?.focus(), 80);
     }
-    setIsExpanded((v) => !v);
   };
 
   // ─── Render ──────────────────────────────────────────────────────────────

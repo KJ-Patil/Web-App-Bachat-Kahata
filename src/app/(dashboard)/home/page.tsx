@@ -32,6 +32,7 @@ export default function WorkspacePage() {
   const [activeCurrency, setActiveCurrency] = useState("INR");
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<string[]>([]);
+  const [chartView, setChartView] = useState<"both" | "income" | "spent">("both");
 
   const transactions = useTransactions();
 
@@ -280,9 +281,36 @@ export default function WorkspacePage() {
       </section>
 
       {/* ────────────────── ANALYTICS CHART CANVAS ────────────────── */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <section className="space-y-4">
+
+        {/* Chart view toggle */}
+        <div className="flex items-center justify-end">
+          <div className="inline-flex items-center gap-1 bg-secondary p-1 rounded-xl border border-border">
+            {([
+              { key: "both", label: "Both" },
+              { key: "income", label: "Income" },
+              { key: "spent", label: "Spent" },
+            ] as const).map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setChartView(opt.key)}
+                className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                  chartView === opt.key
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-foreground-muted hover:text-foreground"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className={`grid grid-cols-1 gap-6 ${chartView === "both" ? "lg:grid-cols-2" : ""}`}>
 
         {/* Trend line Visualizer (Chart 1 - Blue) */}
+        {chartView !== "spent" && (
         <div className="bg-card border border-border p-6 rounded-2xl shadow-sm space-y-4">
           <div>
             <h3 className="font-bold text-foreground text-lg">Balance Development</h3>
@@ -316,8 +344,10 @@ export default function WorkspacePage() {
             )}
           </div>
         </div>
+        )}
 
         {/* Categories Bar Visualizer (Chart 2 - Orange) */}
+        {chartView !== "income" && (
         <div className="bg-card border border-border p-6 rounded-2xl shadow-sm space-y-4">
           <div>
             <h3 className="font-bold text-foreground text-lg">Outflow Categories</h3>
@@ -344,7 +374,9 @@ export default function WorkspacePage() {
             )}
           </div>
         </div>
+        )}
 
+        </div>
       </section>
     </div>
   );

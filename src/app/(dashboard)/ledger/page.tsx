@@ -21,28 +21,24 @@ import {
 import { formatAmount } from "@/core/utils/currencyManager";
 import { validatePhone, toFullNumber, getCountryByCurrency } from "@/core/utils/countries";
 import PhoneNumberInput from "@/components/inputs/PhoneNumberInput";
+import {
+  useLedgerCustomers,
+  setLedgerCustomers,
+  addTransaction,
+  generateId,
+  type LedgerCustomer,
+  type LedgerEntry as StoreLedgerEntry,
+} from "@/core/store/dataStore";
 
-export interface LedgerEntry {
-  id: string;
-  amount: number;
-  type: "gave" | "got";
-  description: string;
-  date: string;
-}
-
-export interface Customer {
-  id: string;
-  name: string;
-  phone: string;
-  type: "customer" | "supplier";
-  balance: number; // positive: credit (customer owes us), negative: debit (we owe supplier)
-  history: LedgerEntry[];
-}
+// Re-exported from the central data store so other ledger pages keep importing
+// `Customer` / `LedgerEntry` from here.
+export type LedgerEntry = StoreLedgerEntry;
+export type Customer = LedgerCustomer;
 
 type FilterTab = "all" | "credit" | "debit" | "settled";
 
 export default function LedgerPage() {
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const customers = useLedgerCustomers();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCurrency, setActiveCurrency] = useState("INR");
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -70,14 +66,7 @@ export default function LedgerPage() {
       const match = getCountryByCurrency(cur);
       if (match) setNewCountry(match.iso2);
     }
-
-    const stored = localStorage.getItem("ledger_customers");
-    if (stored) {
-      setCustomers(JSON.parse(stored));
-    } else {
-      // No customers/suppliers until the user adds them — no seeded accounts
-      setCustomers([]);
-    }
+    // Customers are sourced reactively from the data store via useLedgerCustomers().
   };
 
   const handleAddAccount = (e: React.FormEvent) => {
@@ -96,29 +85,41 @@ export default function LedgerPage() {
     const finalBalance =
       newType === "supplier" ? -Math.abs(numBal) : Math.abs(numBal);
 
+    const name = newName;
+    let history: LedgerEntry[] = [];
+
+    if (finalBalance !== 0) {
+      const openingType: "gave" | "got" = finalBalance > 0 ? "gave" : "got";
+      // Mirror the opening balance into the transactions ledger so it reflects
+      // in the dashboard's balance / expense totals (and syncs to the DB).
+      const tx = addTransaction({
+        amount: Math.abs(finalBalance),
+        type: openingType === "gave" ? "expense" : "income",
+        category: "Ledger",
+        description: `${openingType === "gave" ? "Gave to" : "Got from"} ${name}: Opening balance`,
+      });
+      history = [
+        {
+          id: generateId(),
+          amount: Math.abs(finalBalance),
+          type: openingType,
+          description: "Initial balance recording",
+          date: tx.date,
+          txId: tx.id,
+        },
+      ];
+    }
+
     const newCust: Customer = {
-      id: Math.random().toString(36).substring(2, 9),
-      name: newName,
+      id: generateId(),
+      name,
       phone: toFullNumber(newCountry, newPhone), // e.g. "+919876543210"
       type: newType,
       balance: finalBalance,
-      history:
-        finalBalance !== 0
-          ? [
-              {
-                id: Math.random().toString(36).substring(2, 9),
-                amount: Math.abs(finalBalance),
-                type: finalBalance > 0 ? "gave" : "got",
-                description: "Initial balance recording",
-                date: new Date().toISOString(),
-              },
-            ]
-          : [],
+      history,
     };
 
-    const updated = [newCust, ...customers];
-    setCustomers(updated);
-    localStorage.setItem("ledger_customers", JSON.stringify(updated));
+    setLedgerCustomers([newCust, ...customers]);
 
     // Clear form
     setNewName("");

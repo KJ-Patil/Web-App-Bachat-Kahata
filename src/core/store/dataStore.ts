@@ -37,12 +37,53 @@ export interface SavingsGoal {
 
 export type BudgetMap = Record<string, number>;
 
+export interface LedgerEntry {
+  id: string;
+  amount: number;
+  type: "gave" | "got";
+  description: string;
+  date: string;
+  /** Linked transaction id so dashboard totals stay in sync on add/delete. */
+  txId?: string;
+}
+
+export interface LedgerCustomer {
+  id: string;
+  name: string;
+  phone: string;
+  type: "customer" | "supplier";
+  /** positive: credit (customer owes us), negative: debit (we owe supplier) */
+  balance: number;
+  history: LedgerEntry[];
+}
+
+export interface FamilyGroup {
+  id: string;
+  name: string;
+  code: string;
+  members: number;
+  totalBalance: number;
+  spendingLimit?: number;
+}
+
+export interface GroupExpense {
+  id: string;
+  groupId: string;
+  amount: number;
+  description: string;
+  paidBy: string;
+  date: string;
+}
+
 // ──────────────── STORAGE KEYS ────────────────
 export const KEYS = {
   transactions: "transactions",
   budgets: "budgets",
   savingsGoals: "savings_goals",
   loans: "loans",
+  ledgerCustomers: "ledger_customers",
+  familyGroups: "family_groups",
+  familyExpenses: "family_expenses",
 } as const;
 
 const STORE_EVENT = "datastore:change";
@@ -56,8 +97,9 @@ const FINANCIAL_KEYS = [
   KEYS.budgets,
   KEYS.savingsGoals,
   KEYS.loans,
-  "ledger_customers",
-  "family_groups",
+  KEYS.ledgerCustomers,
+  KEYS.familyGroups,
+  KEYS.familyExpenses,
   "notifications",
   "mood_logs",
   // Legacy / derived caches that were seeded with fabricated values
@@ -74,7 +116,24 @@ const FINANCIAL_KEYS = [
  */
 export function clearFinancialData(): void {
   if (typeof window === "undefined") return;
-  FINANCIAL_KEYS.forEach((key) => localStorage.removeItem(key));
+
+  // 1. Wipe synced keys by writing empty defaults. This triggers pushToFirestore 
+  // so the cloud is also wiped, preventing it from restoring deleted data.
+  writeJSON(KEYS.transactions, []);
+  writeJSON(KEYS.budgets, {});
+  writeJSON(KEYS.savingsGoals, []);
+  writeJSON(KEYS.loans, []);
+  writeJSON(KEYS.ledgerCustomers, []);
+  writeJSON(KEYS.familyGroups, []);
+  writeJSON(KEYS.familyExpenses, []);
+
+  // 2. Remove any remaining local-only financial keys
+  FINANCIAL_KEYS.forEach((key) => {
+    if (!SYNCED_KEYS.includes(key)) {
+      localStorage.removeItem(key);
+    }
+  });
+
   emitChange();
 }
 
@@ -124,6 +183,9 @@ const SYNCED_KEYS: string[] = [
   KEYS.budgets,
   KEYS.savingsGoals,
   KEYS.loans,
+  KEYS.ledgerCustomers,
+  KEYS.familyGroups,
+  KEYS.familyExpenses,
 ];
 
 let currentUid: string | null = null;
@@ -239,6 +301,32 @@ export function getBudgets(): BudgetMap {
 
 export function setBudgets(budgets: BudgetMap): void {
   writeJSON(KEYS.budgets, budgets);
+}
+
+// ──────────────── LEDGER (NOTEBOOK) CUSTOMERS ────────────────
+export function getLedgerCustomers(): LedgerCustomer[] {
+  return readJSON<LedgerCustomer[]>(KEYS.ledgerCustomers, []);
+}
+
+export function setLedgerCustomers(customers: LedgerCustomer[]): void {
+  writeJSON(KEYS.ledgerCustomers, customers);
+}
+
+// ──────────────── FAMILY WALLET ────────────────
+export function getFamilyGroups(): FamilyGroup[] {
+  return readJSON<FamilyGroup[]>(KEYS.familyGroups, []);
+}
+
+export function setFamilyGroups(groups: FamilyGroup[]): void {
+  writeJSON(KEYS.familyGroups, groups);
+}
+
+export function getFamilyExpenses(): GroupExpense[] {
+  return readJSON<GroupExpense[]>(KEYS.familyExpenses, []);
+}
+
+export function setFamilyExpenses(expenses: GroupExpense[]): void {
+  writeJSON(KEYS.familyExpenses, expenses);
 }
 
 // ──────────────── DERIVED SELECTORS ────────────────
@@ -420,6 +508,22 @@ export function useTransactions(): Transaction[] {
   return txs;
 }
 
+/** Subscribe to the notebook ledger customers store. */
+export function useLedgerCustomers(): LedgerCustomer[] {
+  const [customers, setCustomers] = useState<LedgerCustomer[]>([]);
+  useEffect(() => {
+    const sync = () => setCustomers(getLedgerCustomers());
+    sync();
+    window.addEventListener(STORE_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(STORE_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+  return customers;
+}
+
 /** Subscribe to the savings goals store. */
 export function useSavingsGoals(): SavingsGoal[] {
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
@@ -434,4 +538,36 @@ export function useSavingsGoals(): SavingsGoal[] {
     };
   }, []);
   return goals;
+}
+
+/** Subscribe to the family groups store. */
+export function useFamilyGroups(): FamilyGroup[] {
+  const [groups, setGroups] = useState<FamilyGroup[]>([]);
+  useEffect(() => {
+    const sync = () => setGroups(getFamilyGroups());
+    sync();
+    window.addEventListener(STORE_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(STORE_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+  return groups;
+}
+
+/** Subscribe to the family expenses store. */
+export function useFamilyExpenses(): GroupExpense[] {
+  const [expenses, setExpenses] = useState<GroupExpense[]>([]);
+  useEffect(() => {
+    const sync = () => setExpenses(getFamilyExpenses());
+    sync();
+    window.addEventListener(STORE_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(STORE_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+  return expenses;
 }

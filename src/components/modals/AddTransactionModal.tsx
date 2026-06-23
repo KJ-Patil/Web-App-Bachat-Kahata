@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, Home, ShoppingBag, Tv, Layers, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { X, Home, ShoppingBag, Tv, Layers, AlertTriangle, CheckCircle2, Briefcase, TrendingUp, Gift, DollarSign } from "lucide-react";
 import { addTransaction, getTransactions, getBudgets } from "@/core/store/dataStore";
 
 interface AddTransactionModalProps {
@@ -21,6 +21,13 @@ const CATEGORY_OPTIONS: CategoryOption[] = [
   { id: "Groceries", name: "Groceries", icon: ShoppingBag },
   { id: "Entertainment", name: "Entertainment", icon: Tv },
   { id: "Investment", name: "Investment", icon: Layers },
+];
+
+const INCOME_CATEGORY_OPTIONS: CategoryOption[] = [
+  { id: "Salary", name: "Salary", icon: Briefcase },
+  { id: "Investment", name: "Investment", icon: TrendingUp },
+  { id: "Gift", name: "Gift", icon: Gift },
+  { id: "Other", name: "Other", icon: DollarSign },
 ];
 
 export default function AddTransactionModal({
@@ -58,8 +65,8 @@ export default function AddTransactionModal({
     addTransaction({
       amount: numAmount,
       type: transactionType,
-      category: transactionType === "income" ? "Salary" : category,
-      description: description || (transactionType === "income" ? "Active Inflow" : `${category} Cost`),
+      category: category,
+      description: description || (transactionType === "income" ? `${category} Inflow` : `${category} Cost`),
     });
 
     // Perform Budget Threshold Check (80% capacity checks) for expenses,
@@ -159,7 +166,12 @@ export default function AddTransactionModal({
                 <div className="grid grid-cols-2 gap-2 p-1 bg-secondary rounded-xl relative">
                   <button
                     type="button"
-                    onClick={() => setTransactionType("expense")}
+                    onClick={() => {
+                      setTransactionType("expense");
+                      if (!CATEGORY_OPTIONS.find(c => c.id === category)) {
+                        setCategory(CATEGORY_OPTIONS[0].id);
+                      }
+                    }}
                     className={`py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                       transactionType === "expense"
                         ? "bg-destructive text-destructive-foreground shadow-sm font-extrabold"
@@ -170,7 +182,12 @@ export default function AddTransactionModal({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setTransactionType("income")}
+                    onClick={() => {
+                      setTransactionType("income");
+                      if (!INCOME_CATEGORY_OPTIONS.find(c => c.id === category)) {
+                        setCategory(INCOME_CATEGORY_OPTIONS[0].id);
+                      }
+                    }}
                     className={`py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                       transactionType === "income"
                         ? "bg-success text-success-foreground shadow-sm font-extrabold"
@@ -206,35 +223,33 @@ export default function AddTransactionModal({
                 </div>
               </div>
 
-              {/* Expense Specific - 4-Column Category Grid */}
-              {transactionType === "expense" && (
-                <div className="space-y-2">
-                  <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider block">
-                    Choose Budget Category
-                  </span>
-                  <div className="grid grid-cols-4 gap-3">
-                    {CATEGORY_OPTIONS.map((opt) => {
-                      const Icon = opt.icon;
-                      const isSelected = category === opt.id;
-                      return (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => setCategory(opt.id)}
-                          className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all cursor-pointer ${
-                            isSelected
-                              ? "bg-primary-lighter text-primary border-primary font-bold scale-105"
-                              : "bg-card border-border text-icon-default hover:bg-secondary hover:text-foreground"
-                          }`}
-                        >
-                          <Icon className="w-5 h-5 mb-1" />
-                          <span className="text-[10px] truncate max-w-full">{opt.name}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+              {/* Category Grid */}
+              <div className="space-y-2">
+                <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider block">
+                  {transactionType === "expense" ? "Choose Budget Category" : "Choose Income Category"}
+                </span>
+                <div className="grid grid-cols-4 gap-3">
+                  {(transactionType === "expense" ? CATEGORY_OPTIONS : INCOME_CATEGORY_OPTIONS).map((opt) => {
+                    const Icon = opt.icon;
+                    const isSelected = category === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setCategory(opt.id)}
+                        className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all cursor-pointer ${
+                          isSelected
+                            ? "bg-primary-lighter text-primary border-primary font-bold scale-105"
+                            : "bg-card border-border text-icon-default hover:bg-secondary hover:text-foreground"
+                        }`}
+                      >
+                        <Icon className="w-5 h-5 mb-1" />
+                        <span className="text-[10px] truncate max-w-full">{opt.name}</span>
+                      </button>
+                    );
+                  })}
                 </div>
-              )}
+              </div>
 
               {/* Narrative Description */}
               <div className="space-y-1">

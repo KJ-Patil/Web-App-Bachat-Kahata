@@ -4,33 +4,20 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Users, Plus, Key, ArrowRight, Wallet, UserPlus } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
-
-interface FamilyGroup {
-  id: string;
-  name: string;
-  code: string;
-  members: number;
-  totalBalance: number;
-}
+import { FamilyGroup, useFamilyGroups, setFamilyGroups } from "@/core/store/dataStore";
 
 export default function FamilyWalletPage() {
-  const [groups, setGroups] = useState<FamilyGroup[]>([]);
+  const groups = useFamilyGroups();
   const [inviteCode, setInviteCode] = useState("");
   const [activeCurrency, setActiveCurrency] = useState("INR");
   const [isJoinOpen, setIsJoinOpen] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       const cur = localStorage.getItem("active_currency");
       if (cur) setActiveCurrency(cur);
-
-      const stored = localStorage.getItem("family_groups");
-      if (stored) {
-        setGroups(JSON.parse(stored));
-      } else {
-        // No shared wallets until the user joins or creates one — no seeded groups
-        setGroups([]);
-      }
     }
   }, []);
 
@@ -48,11 +35,29 @@ export default function FamilyWalletPage() {
     };
 
     const updated = [...groups, newGroup];
-    setGroups(updated);
-    localStorage.setItem("family_groups", JSON.stringify(updated));
+    setFamilyGroups(updated);
 
     setInviteCode("");
     setIsJoinOpen(false);
+  };
+
+  const handleCreateGroup = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newGroupName.trim()) return;
+
+    const newGroup: FamilyGroup = {
+      id: Math.random().toString(36).substring(2, 9),
+      name: newGroupName.trim(),
+      code: Math.floor(100000 + Math.random() * 900000).toString(), // random 6-digit code
+      members: 1, // Just the creator initially
+      totalBalance: 0,
+    };
+
+    const updated = [...groups, newGroup];
+    setFamilyGroups(updated);
+
+    setNewGroupName("");
+    setIsCreateOpen(false);
   };
 
   return (
@@ -104,6 +109,32 @@ export default function FamilyWalletPage() {
         </div>
       )}
 
+      {/* Create Overlay */}
+      {isCreateOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in duration-200">
+          <div className="w-full bg-card border border-border rounded-2xl max-w-sm shadow-2xl p-6 space-y-4">
+            <h3 className="text-lg font-black text-foreground text-center">Create New Group</h3>
+            <p className="text-xs text-foreground-muted text-center">
+              Enter a name for your new family or shared wallet group.
+            </p>
+            <form onSubmit={handleCreateGroup} className="space-y-4">
+              <input
+                type="text"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                className="input-base w-full text-center text-lg font-bold"
+                placeholder="e.g. Smith Family"
+                required
+              />
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setIsCreateOpen(false)} className="btn-secondary flex-1">Cancel</button>
+                <button type="submit" className="btn-primary flex-1">Create</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Group List */}
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {groups.map((group) => (
@@ -148,8 +179,11 @@ export default function FamilyWalletPage() {
           </Link>
         ))}
 
-        {/* Create New Group Card Placeholder */}
-        <button className="bg-transparent border-2 border-dashed border-border rounded-2xl p-6 flex flex-col items-center justify-center text-icon-muted hover:text-primary hover:border-primary hover:bg-primary-lighter/30 transition-all cursor-pointer min-h-[200px]">
+        {/* Create New Group Card */}
+        <button 
+          onClick={() => setIsCreateOpen(true)}
+          className="bg-transparent border-2 border-dashed border-border rounded-2xl p-6 flex flex-col items-center justify-center text-icon-muted hover:text-primary hover:border-primary hover:bg-primary-lighter/30 transition-all cursor-pointer min-h-[200px]"
+        >
           <div className="w-12 h-12 rounded-xl bg-background border border-border flex items-center justify-center mb-3">
             <Plus className="w-6 h-6" />
           </div>
