@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Bell, ArrowUpRight, ArrowDownRight, Wallet, Target, Activity, Calendar, Inbox } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
 import SmsPasteZone from "@/components/automation/SmsPasteZone";
+import SafeToSpendCard from "@/components/dashboard/SafeToSpendCard";
 import {
   useTransactions,
   getTotals,
@@ -211,6 +212,9 @@ export default function WorkspacePage() {
         </div>
       </section>
 
+      {/* ────────────────── SAFE-TO-SPEND CARD ────────────────── */}
+      <SafeToSpendCard />
+
       {/* ────────────────── STATISTICAL GRID ────────────────── */}
       <section className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
         <div className="grid grid-cols-1 md:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-border-strong">
@@ -223,10 +227,10 @@ export default function WorkspacePage() {
             </div>
             <div className="space-y-1">
               <h3 className="text-xl font-bold text-foreground">
-                {budgetRemaining === null ? "—" : `${budgetRemaining}%`}
+                {!isMounted || budgetRemaining === null ? "—" : `${budgetRemaining}%`}
               </h3>
               <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
-                <div className="bg-primary h-full rounded-full" style={{ width: `${budgetRemaining ?? 0}%` }}></div>
+                <div className="bg-primary h-full rounded-full" style={{ width: `${isMounted ? budgetRemaining ?? 0 : 0}%` }}></div>
               </div>
             </div>
           </div>
@@ -239,10 +243,10 @@ export default function WorkspacePage() {
             </div>
             <div className="space-y-1">
               <h3 className="text-xl font-bold text-foreground">
-                {goalProgress === null ? "—" : `${goalProgress}%`}
+                {!isMounted || goalProgress === null ? "—" : `${goalProgress}%`}
               </h3>
               <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
-                <div className="bg-brand h-full rounded-full" style={{ width: `${goalProgress ?? 0}%` }}></div>
+                <div className="bg-brand h-full rounded-full" style={{ width: `${isMounted ? goalProgress ?? 0 : 0}%` }}></div>
               </div>
             </div>
           </div>
@@ -255,7 +259,7 @@ export default function WorkspacePage() {
             </div>
             <div className="space-y-1">
               <h3 className="text-xl font-bold text-foreground">
-                {healthScore === null ? "—" : `${healthScore} / 100`}
+                {!isMounted || healthScore === null ? "—" : `${healthScore} / 100`}
               </h3>
               <p className="text-xs text-foreground-muted">
                 {healthScore === null ? "Add transactions to compute." : "Based on your active savings rate."}
@@ -270,7 +274,7 @@ export default function WorkspacePage() {
               <Calendar className="w-4 h-4 text-icon-muted" />
             </div>
             <div className="space-y-1">
-              <h3 className="text-xl font-bold text-foreground">{transactions.length}</h3>
+              <h3 className="text-xl font-bold text-foreground">{isMounted ? transactions.length : "—"}</h3>
               <p className="text-xs text-foreground-muted">
                 {hasData ? "All local transactions verified." : "No transactions recorded yet."}
               </p>

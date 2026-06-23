@@ -16,6 +16,34 @@ export interface Settlement {
 }
 
 /**
+ * Computes each person's net balance across all expenses.
+ * positive balance = the person should RECEIVE money (others owe them).
+ * negative balance = the person should GIVE money (they owe others).
+ */
+export function calculateBalances(expenses: ExpenseEntry[]): BalanceRecord[] {
+  const balances: Record<string, number> = {};
+
+  expenses.forEach((expense) => {
+    balances[expense.paidBy] = (balances[expense.paidBy] || 0) + expense.amount;
+
+    if (expense.participants.length > 0) {
+      const splitAmount = expense.amount / expense.participants.length;
+      expense.participants.forEach((participant) => {
+        balances[participant] = (balances[participant] || 0) - splitAmount;
+      });
+    }
+  });
+
+  return Object.entries(balances)
+    .map(([person, balance]) => ({
+      person,
+      // Round to 2 dp to avoid floating-point noise (e.g. -0.00001).
+      balance: Math.round(balance * 100) / 100,
+    }))
+    .sort((a, b) => b.balance - a.balance);
+}
+
+/**
  * Calculates simplified debt settlements.
  * 1. Calculates net balance for each person.
  * 2. Uses a greedy approach to settle the largest debtors with the largest creditors.

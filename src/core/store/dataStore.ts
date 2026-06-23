@@ -37,6 +37,17 @@ export interface SavingsGoal {
 
 export type BudgetMap = Record<string, number>;
 
+export interface LoanRecord {
+  id: string;
+  name: string;
+  lender: string;
+  principal: number;
+  annualInterestRate: number;
+  tenureMonths: number;
+  monthsPaid: number;
+  startDate: string;
+}
+
 export interface LedgerEntry {
   id: string;
   amount: number;
@@ -294,6 +305,15 @@ export function setSavingsGoals(goals: SavingsGoal[]): void {
   writeJSON(KEYS.savingsGoals, goals);
 }
 
+// ──────────────── LOANS (EMI TRACKER) ────────────────
+export function getLoans(): LoanRecord[] {
+  return readJSON<LoanRecord[]>(KEYS.loans, []);
+}
+
+export function setLoans(loans: LoanRecord[]): void {
+  writeJSON(KEYS.loans, loans);
+}
+
 // ──────────────── BUDGETS ────────────────
 export function getBudgets(): BudgetMap {
   return readJSON<BudgetMap>(KEYS.budgets, {});
@@ -522,6 +542,22 @@ export function useLedgerCustomers(): LedgerCustomer[] {
     };
   }, []);
   return customers;
+}
+
+/** Subscribe to the loans (EMI tracker) store. */
+export function useLoans(): LoanRecord[] {
+  const [loans, setLoansState] = useState<LoanRecord[]>([]);
+  useEffect(() => {
+    const sync = () => setLoansState(getLoans());
+    sync();
+    window.addEventListener(STORE_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(STORE_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+  return loans;
 }
 
 /** Subscribe to the savings goals store. */

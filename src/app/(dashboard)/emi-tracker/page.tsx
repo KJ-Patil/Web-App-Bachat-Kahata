@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
 import AddLoanModal, { type LoanRecord } from "@/components/modals/AddLoanModal";
+import { useLoans, setLoans } from "@/core/store/dataStore";
 
 // ─── EMI Formula (reducing-balance compound) ─────────────────────────────────
 
@@ -301,40 +302,24 @@ function LoanCard({ loan, currencyCode, onDelete }: LoanCardProps) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function EmiTrackerPage() {
-  const [loans, setLoans] = useState<LoanRecord[]>([]);
+  // Loans are read from the central data layer, which mirrors every write to
+  // Firestore (offline-first: localStorage is the instant cache, cloud syncs).
+  const loans = useLoans();
   const [activeCurrency, setActiveCurrency] = useState("INR");
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
     const cur = localStorage.getItem("active_currency");
     if (cur) setActiveCurrency(cur);
-
-    const stored = localStorage.getItem("loans");
-    if (stored) {
-      try {
-        setLoans(JSON.parse(stored));
-      } catch {
-        // Malformed cache — start clean rather than fabricating data
-        setLoans([]);
-      }
-    } else {
-      // No loans until the user adds one — no seeded liabilities
-      setLoans([]);
-    }
   }, []);
 
   const saveLoan = (loan: LoanRecord) => {
-    const updated = [loan, ...loans];
-    setLoans(updated);
-    localStorage.setItem("loans", JSON.stringify(updated));
+    setLoans([loan, ...loans]);
   };
 
   const deleteLoan = (id: string) => {
-    const updated = loans.filter((l) => l.id !== id);
-    setLoans(updated);
-    localStorage.setItem("loans", JSON.stringify(updated));
+    setLoans(loans.filter((l) => l.id !== id));
   };
 
   // ── Aggregate summary ────────────────────────────────────────────────────

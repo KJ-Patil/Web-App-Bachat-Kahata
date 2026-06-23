@@ -105,7 +105,7 @@ export default function BudgetsPage() {
     if (ratio >= 0.8) {
       return "bg-warning"; // Approaching warning limit (80% capacity)
     }
-    return "bg-success"; // Under limit
+    return "bg-primary"; // Under limit
   };
 
   const getCardBorderColor = (spent: number, limit: number) => {
@@ -184,8 +184,8 @@ export default function BudgetsPage() {
                     isOver 
                       ? "bg-error-light text-error" 
                       : isWarning 
-                        ? "bg-warning-light text-brand" 
-                        : "bg-success-light text-success"
+                        ? "bg-warning-light text-brand"
+                        : "bg-primary-lighter text-primary"
                   }`}>
                     <Icon className="w-5 h-5" />
                   </div>
@@ -239,7 +239,7 @@ export default function BudgetsPage() {
                     Warning: Budget utilization is above 80% thresholds.
                   </span>
                 ) : (
-                  <span className="text-[10px] font-bold text-success flex items-center gap-1 mt-1">
+                  <span className="text-[10px] font-bold text-primary flex items-center gap-1 mt-1">
                     <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
                     Optimal category balance status.
                   </span>

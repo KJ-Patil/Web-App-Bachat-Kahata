@@ -4,12 +4,14 @@ import React, { useState, useEffect } from "react";
 import { Coins, Plus, Calendar, Target, TrendingUp, AlertCircle, Inbox } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
 import LogDepositModal from "@/components/modals/LogDepositModal";
+import AddGoalModal from "@/components/modals/AddGoalModal";
 import { SavingsGoal, getSavingsGoals } from "@/core/store/dataStore";
 
 export default function SavingsPage() {
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [activeCurrency, setActiveCurrency] = useState("INR");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAddGoalOpen, setIsAddGoalOpen] = useState(false);
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
   const [selectedGoalName, setSelectedGoalName] = useState("");
 
@@ -60,13 +62,23 @@ export default function SavingsPage() {
   return (
     <div className="flex-1 flex flex-col p-6 space-y-6 md:p-8 max-w-4xl mx-auto w-full">
       {/* Header */}
-      <div className="space-y-1">
-        <h1 className="text-2xl font-extrabold text-foreground tracking-tight sm:text-3xl">
-          Savings Objectives
-        </h1>
-        <p className="text-sm font-medium text-foreground-muted">
-          Track goals and calculate active monthly deposit requirements.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-extrabold text-foreground tracking-tight sm:text-3xl">
+            Savings Objectives
+          </h1>
+          <p className="text-sm font-medium text-foreground-muted">
+            Track goals and calculate active monthly deposit requirements.
+          </p>
+        </div>
+
+        <button
+          onClick={() => setIsAddGoalOpen(true)}
+          className="btn-primary shrink-0 flex items-center justify-center gap-2"
+        >
+          <Plus className="w-4 h-4" />
+          Create Goal
+        </button>
       </div>
 
       {/* ────────────────── OBJECTIVE CARDS GRID ────────────────── */}
@@ -182,6 +194,13 @@ export default function SavingsPage() {
         onSuccess={loadGoalsData}
         goalId={selectedGoalId}
         goalName={selectedGoalName}
+      />
+
+      {/* Add Goal Modal */}
+      <AddGoalModal
+        isOpen={isAddGoalOpen}
+        onClose={() => setIsAddGoalOpen(false)}
+        onSuccess={loadGoalsData}
       />
     </div>
   );

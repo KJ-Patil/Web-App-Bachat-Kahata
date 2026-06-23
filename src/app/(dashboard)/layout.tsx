@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { Home, Settings, LogOut, Plus, Globe, List, BookOpen, BarChart3, Download, CreditCard, Mic, Users, Activity, SlidersHorizontal, Receipt, BrainCircuit, GraduationCap, Target } from "lucide-react";
+import { Home, Settings, LogOut, Plus, Globe, List, BookOpen, BarChart3, Download, CreditCard, Mic, Users, Activity, SlidersHorizontal, Receipt, BrainCircuit, GraduationCap, Target, PiggyBank, Sparkles, Flame, Repeat, ArrowLeftRight } from "lucide-react";
 import { useLazyCatchUpSync } from "@/core/store/CatchUpSync";
 import { clearFinancialData } from "@/core/store/dataStore";
 import AddTransactionModal from "@/components/modals/AddTransactionModal";
@@ -20,6 +20,7 @@ const NAV_ITEMS: NavigationItem[] = [
   { name: "Workspace", href: "/home", icon: Home },
   { name: "Transactions", href: "/transactions", icon: List },
   { name: "Budgets", href: "/budgets", icon: Target },
+  { name: "Savings Goals", href: "/savings", icon: PiggyBank },
   { name: "Notebooks", href: "/ledger", icon: BookOpen },
   { name: "Bill Splitter", href: "/bill-splitter", icon: Receipt },
   { name: "Family Wallet", href: "/family-wallet", icon: Users },
@@ -28,6 +29,10 @@ const NAV_ITEMS: NavigationItem[] = [
   { name: "CIBIL Sim", href: "/cibil-simulator", icon: SlidersHorizontal },
   { name: "Academy", href: "/academy", icon: GraduationCap },
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
+  { name: "Compare Months", href: "/comparison", icon: ArrowLeftRight },
+  { name: "Subscriptions", href: "/subscriptions", icon: Repeat },
+  { name: "What-If Sim", href: "/what-if", icon: Sparkles },
+  { name: "Streaks", href: "/streaks", icon: Flame },
   { name: "EMI Tracker", href: "/emi-tracker", icon: CreditCard },
   { name: "Export", href: "/export", icon: Download },
   { name: "Settings", href: "/settings", icon: Settings },
