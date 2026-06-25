@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { X, Check, Save } from "lucide-react";
+import { getBudgets, setBudgets } from "@/core/store/dataStore";
 
 interface SetBudgetModalProps {
   isOpen: boolean;
@@ -24,41 +25,17 @@ export default function SetBudgetModal({
     if (isOpen) {
       setCategory("Housing");
       setSuccess(false);
-      
+
       // Load current limit if exists
-      const stored = localStorage.getItem("budgets");
-      if (stored) {
-        try {
-          const budgets = JSON.parse(stored);
-          if (budgets["Housing"]) {
-            setLimit(String(budgets["Housing"]));
-          } else {
-            setLimit("");
-          }
-        } catch (e) {
-          setLimit("");
-        }
-      } else {
-        setLimit("");
-      }
+      const budgets = getBudgets();
+      setLimit(budgets["Housing"] ? String(budgets["Housing"]) : "");
     }
   }, [isOpen]);
 
   const handleCategorySelect = (cat: string) => {
     setCategory(cat);
-    const stored = localStorage.getItem("budgets");
-    if (stored) {
-      try {
-        const budgets = JSON.parse(stored);
-        if (budgets[cat]) {
-          setLimit(String(budgets[cat]));
-        } else {
-          setLimit("");
-        }
-      } catch (e) {
-        setLimit("");
-      }
-    }
+    const budgets = getBudgets();
+    setLimit(budgets[cat] ? String(budgets[cat]) : "");
   };
 
   if (!isOpen) return null;
@@ -68,16 +45,11 @@ export default function SetBudgetModal({
     const numLimit = parseFloat(limit);
     if (isNaN(numLimit) || numLimit <= 0) return;
 
-    const stored = localStorage.getItem("budgets");
-    const budgets = stored ? JSON.parse(stored) : {
-      Housing: 25000,
-      Groceries: 12000,
-      Entertainment: 6000,
-      Investment: 20000,
-    };
-
-    budgets[category] = numLimit;
-    localStorage.setItem("budgets", JSON.stringify(budgets));
+    // Route through the data store so the write is persisted, synced to the
+    // cloud, and broadcast to reactive subscribers (e.g. the home dashboard).
+    // Writing localStorage directly here would be silently reverted by the
+    // next Firestore snapshot and would never notify other pages.
+    setBudgets({ ...getBudgets(), [category]: numLimit });
 
     setSuccess(true);
     setTimeout(() => {

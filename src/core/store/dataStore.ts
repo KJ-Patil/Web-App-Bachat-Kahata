@@ -216,6 +216,15 @@ function pushToFirestore(key: string, value: unknown): void {
   );
 }
 
+/** True for `null`/`undefined`, an empty array, or an empty object — i.e. a
+ *  value that carries no user data and must never overwrite a populated one. */
+function isEmptyValue(value: unknown): boolean {
+  if (value == null) return true;
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === "object") return Object.keys(value as object).length === 0;
+  return false;
+}
+
 /** Write a value that arrived from Firestore into the local cache. */
 function applyRemote(key: string, value: unknown): void {
   applyingRemote.add(key);
@@ -242,7 +251,23 @@ function startSync(uid: string): void {
           }
           return;
         }
-        applyRemote(key, snap.data().value);
+
+        const remote = snap.data().value;
+
+        // Guard against data loss: never let an empty/stale remote snapshot
+        // clobber data the user already has locally. This is what made saves
+        // "not stick" — a stale empty cloud doc would overwrite a just-saved
+        // budget on the next snapshot. When the cloud is empty but local has
+        // data, push local up to reconcile instead of wiping it.
+        if (isEmptyValue(remote)) {
+          const local = localStorage.getItem(key);
+          if (local && !isEmptyValue(JSON.parse(local))) {
+            void setDoc(ref, { value: JSON.parse(local) }).catch(() => {});
+            return;
+          }
+        }
+
+        applyRemote(key, remote);
       })
     );
   }
@@ -526,6 +551,22 @@ export function useTransactions(): Transaction[] {
     };
   }, []);
   return txs;
+}
+
+/** Subscribe to the budgets store. Re-renders whenever budgets change. */
+export function useBudgets(): BudgetMap {
+  const [budgets, setBudgetsState] = useState<BudgetMap>({});
+  useEffect(() => {
+    const sync = () => setBudgetsState(getBudgets());
+    sync();
+    window.addEventListener(STORE_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(STORE_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+  return budgets;
 }
 
 /** Subscribe to the notebook ledger customers store. */

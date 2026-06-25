@@ -50,7 +50,9 @@ export default function SafeToSpendCard() {
         </h2>
         <p className="text-xs font-medium text-white/80 flex items-center gap-1.5">
           <Info className="w-3.5 h-3.5 shrink-0" />
-          {safe.insufficientData
+          {!isMounted
+            ? "Calculating your daily number…"
+            : safe.insufficientData
             ? "Add income or a budget this month to get your daily number."
             : `After this month's spending & savings, across ${safe.daysLeft} day${
                 safe.daysLeft === 1 ? "" : "s"

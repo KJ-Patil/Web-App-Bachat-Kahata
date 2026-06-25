@@ -7,11 +7,11 @@ import SmsPasteZone from "@/components/automation/SmsPasteZone";
 import SafeToSpendCard from "@/components/dashboard/SafeToSpendCard";
 import {
   useTransactions,
+  useBudgets,
   getTotals,
   getMonthTotals,
   getCategoryBreakdown,
   getDailyBalanceTrend,
-  getBudgets,
   getSavingsGoals,
   getSavingsRate,
 } from "@/core/store/dataStore";
@@ -36,6 +36,7 @@ export default function WorkspacePage() {
   const [chartView, setChartView] = useState<"both" | "income" | "spent">("both");
 
   const transactions = useTransactions();
+  const budgets = useBudgets();
 
   // ── Derived, real-time metrics computed from the user's own transactions ──
   const totals = useMemo(() => getTotals(transactions), [transactions]);
@@ -52,12 +53,11 @@ export default function WorkspacePage() {
 
   // Remaining budget %: this month's spend against the sum of configured budgets.
   const budgetRemaining = useMemo(() => {
-    const budgets = getBudgets();
     const totalBudget = Object.values(budgets).reduce((a, b) => a + b, 0);
     if (totalBudget <= 0) return null;
     const remaining = Math.max(0, totalBudget - monthTotals.expense);
     return Math.round((remaining / totalBudget) * 1000) / 10;
-  }, [transactions, monthTotals.expense]);
+  }, [budgets, monthTotals.expense]);
 
   // Overall savings-goal progress.
   const goalProgress = useMemo(() => {
