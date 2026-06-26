@@ -2,6 +2,7 @@ export interface ExpenseEntry {
   paidBy: string;
   amount: number;
   participants: string[]; // List of names
+  description?: string; // Optional label, e.g. "Dinner at Cafe"
 }
 
 export interface BalanceRecord {

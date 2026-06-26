@@ -23,6 +23,7 @@ export default function VoiceLoggingModal({
   const [parsedData, setParsedData] = useState<ParsedVoiceData | null>(null);
   const [success, setSuccess] = useState(false);
   const [anomalyWarning, setAnomalyWarning] = useState<string | null>(null);
+  const [language, setLanguage] = useState("hi-IN");
   
   const recognitionRef = useRef<any>(null);
 
@@ -34,7 +35,7 @@ export default function VoiceLoggingModal({
         const recognition = new SpeechRecognition();
         recognition.continuous = true;
         recognition.interimResults = true;
-        recognition.lang = "hi-IN"; // Mixed hindi-english
+        recognition.lang = language;
 
         recognition.onresult = (event: any) => {
           let currentTranscript = "";
@@ -56,7 +57,7 @@ export default function VoiceLoggingModal({
         recognitionRef.current = recognition;
       }
     }
-  }, []);
+  }, [language]);
 
   useEffect(() => {
     if (isOpen) {
@@ -132,12 +133,29 @@ export default function VoiceLoggingModal({
             <Mic className="w-5 h-5 text-primary" />
             Voice Logging
           </h3>
-          <button
-            onClick={onClose}
-            className="text-icon-muted hover:text-icon-active p-1 rounded-lg hover:bg-secondary transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-3">
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              className="bg-secondary text-foreground text-xs font-bold px-2 py-1.5 rounded-lg border border-border focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+            >
+              <option value="hi-IN">Hindi</option>
+              <option value="en-US">English</option>
+              <option value="mr-IN">Marathi</option>
+              <option value="ta-IN">Tamil</option>
+              <option value="te-IN">Telugu</option>
+              <option value="bn-IN">Bengali</option>
+              <option value="gu-IN">Gujarati</option>
+              <option value="kn-IN">Kannada</option>
+              <option value="ml-IN">Malayalam</option>
+            </select>
+            <button
+              onClick={onClose}
+              className="text-icon-muted hover:text-icon-active p-1 rounded-lg hover:bg-secondary transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Content */}

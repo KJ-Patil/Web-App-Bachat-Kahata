@@ -1,14 +1,17 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Eye, EyeOff, Mail, Lock, CheckCircle2 } from "lucide-react";
+import { Eye, EyeOff, Mail, Lock, CheckCircle2, Phone, ArrowLeft } from "lucide-react";
 import { auth } from "@/config/firebase";
 import {
   signInWithEmailAndPassword,
   GoogleAuthProvider,
   signInWithPopup,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+  ConfirmationResult,
 } from "firebase/auth";
 
 export default function LoginPage() {
@@ -18,6 +21,95 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Phone (mobile number) sign-in state
+  const [usePhone, setUsePhone] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const confirmationRef = useRef<ConfirmationResult | null>(null);
+  const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
+
+  const finishSignIn = (session: { email: string | null; name: string }) => {
+    localStorage.setItem("user_session", JSON.stringify(session));
+    const pinHash = localStorage.getItem("pin_hash");
+    router.push(pinHash ? "/pin-lock" : "/home");
+  };
+
+  const handleSendOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // Firebase requires E.164 format, e.g. +919876543210
+    if (!/^\+[1-9]\d{6,14}$/.test(phone)) {
+      setError("Enter a valid number in international format, e.g. +919876543210");
+      return;
+    }
+    setError("");
+    setLoading(true);
+
+    try {
+      // Lazily create an invisible reCAPTCHA verifier (required for phone auth)
+      if (!recaptchaRef.current) {
+        recaptchaRef.current = new RecaptchaVerifier(auth, "recaptcha-container", {
+          size: "invisible",
+        });
+      }
+      confirmationRef.current = await signInWithPhoneNumber(
+        auth,
+        phone,
+        recaptchaRef.current
+      );
+      setOtpSent(true);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to send OTP.";
+      setError(message);
+      // Reset the verifier so the user can retry cleanly
+      recaptchaRef.current?.clear();
+      recaptchaRef.current = null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!confirmationRef.current) {
+      setError("Please request an OTP first.");
+      return;
+    }
+    if (otp.trim().length < 6) {
+      setError("Enter the 6-digit code sent to your phone.");
+      return;
+    }
+    setError("");
+    setLoading(true);
+
+    try {
+      const result = await confirmationRef.current.confirm(otp.trim());
+      const user = result.user;
+      finishSignIn({
+        email: user.email,
+        name: user.phoneNumber || "Phone User",
+      });
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Invalid or expired code.";
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetPhoneFlow = () => {
+    setUsePhone(false);
+    setOtpSent(false);
+    setPhone("");
+    setOtp("");
+    setError("");
+    confirmationRef.current = null;
+    recaptchaRef.current?.clear();
+    recaptchaRef.current = null;
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,6 +197,8 @@ export default function LoginPage() {
             </div>
           )}
 
+          {!usePhone ? (
+          <>
           <form onSubmit={handleLogin} className="space-y-4">
             {/* Email Field */}
             <div className="space-y-1">
@@ -211,6 +305,107 @@ export default function LoginPage() {
             </svg>
             Continue with Google
           </button>
+
+          {/* Phone (mobile number) Login */}
+          <button
+            type="button"
+            onClick={() => {
+              setError("");
+              setUsePhone(true);
+            }}
+            className="btn-secondary w-full flex items-center justify-center gap-3 bg-background hover:bg-background-subtle border border-border"
+            disabled={loading}
+          >
+            <Phone className="h-5 w-5 text-icon-active" />
+            Continue with Phone
+          </button>
+          </>
+          ) : (
+          <div className="space-y-4">
+            <button
+              type="button"
+              onClick={resetPhoneFlow}
+              className="flex items-center gap-1 text-sm font-semibold text-foreground-muted hover:text-foreground"
+              disabled={loading}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </button>
+
+            {!otpSent ? (
+              <form onSubmit={handleSendOtp} className="space-y-4">
+                <div className="space-y-1">
+                  <label htmlFor="phone" className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
+                    Mobile Number
+                  </label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-icon-muted">
+                      <Phone className="h-4 w-4" />
+                    </span>
+                    <input
+                      id="phone"
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="input-base pl-10 w-full"
+                      placeholder="+919876543210"
+                      required
+                      disabled={loading}
+                    />
+                  </div>
+                  <p className="text-xs text-foreground-muted">
+                    Include your country code (e.g. +91 for India).
+                  </p>
+                </div>
+                <button type="submit" className="btn-primary w-full mt-2" disabled={loading}>
+                  {loading ? (
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                  ) : (
+                    "Send OTP"
+                  )}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyOtp} className="space-y-4">
+                <div className="space-y-1">
+                  <label htmlFor="otp" className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
+                    Verification Code
+                  </label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-icon-muted">
+                      <CheckCircle2 className="h-4 w-4" />
+                    </span>
+                    <input
+                      id="otp"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                      className="input-base pl-10 w-full tracking-[0.5em]"
+                      placeholder="••••••"
+                      required
+                      disabled={loading}
+                    />
+                  </div>
+                  <p className="text-xs text-foreground-muted">
+                    Sent to {phone}.
+                  </p>
+                </div>
+                <button type="submit" className="btn-primary w-full mt-2" disabled={loading}>
+                  {loading ? (
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                  ) : (
+                    "Verify & Sign In"
+                  )}
+                </button>
+              </form>
+            )}
+          </div>
+          )}
+
+          {/* Invisible reCAPTCHA target required by Firebase phone auth */}
+          <div id="recaptcha-container" />
         </div>
 
         {/* Footer Link */}

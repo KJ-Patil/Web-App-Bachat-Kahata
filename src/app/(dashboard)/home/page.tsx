@@ -155,7 +155,15 @@ export default function WorkspacePage() {
             <div className="absolute right-0 mt-3 w-80 bg-card border border-border rounded-xl shadow-lg z-40 p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-150">
               <div className="flex justify-between items-center">
                 <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">Alert Center</span>
-                <button onClick={() => setShowNotifications(false)} className="text-[10px] text-primary hover:underline">Dismiss All</button>
+                <button 
+                  onClick={() => {
+                    setNotifications([]);
+                    localStorage.setItem("notifications", "[]");
+                  }} 
+                  className="text-[10px] text-primary hover:underline"
+                >
+                  Clear All
+                </button>
               </div>
               <div className="space-y-2 divide-y divide-border">
                 {notifications.length === 0 ? (

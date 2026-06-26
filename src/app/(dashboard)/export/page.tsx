@@ -115,6 +115,7 @@ export default function ExportPage() {
   const [selectedTypes, setSelectedTypes] = useState<Set<DataType>>(
     new Set(["transactions", "budgets", "savings"])
   );
+  const [transactionFilter, setTransactionFilter] = useState<"all" | "income" | "expense">("all");
   const [format, setFormat] = useState<OutputFormat>("csv");
 
   // Raw localStorage data
@@ -150,6 +151,7 @@ export default function ExportPage() {
 
   // ── Filtered record counts ─────────────────────────────────────────────────
   const filteredTransactions = rawTransactions.filter((tx) => {
+    if (transactionFilter !== "all" && tx.type !== transactionFilter) return false;
     if (!dateFrom && !dateTo) return true;
     const txDate = tx.date.slice(0, 10);
     if (dateFrom && txDate < dateFrom) return false;
@@ -261,7 +263,8 @@ export default function ExportPage() {
       // Stagger multiple CSV downloads so the browser doesn't block them
       let delay = 0;
       if (selectedTypes.has("transactions") && transactions.length > 0) {
-        setTimeout(() => exportTransactionsCsv(transactions, currencyCode), delay);
+        const tFileName = transactionFilter === "all" ? `bachatkhata-transactions-${new Date().toISOString().slice(0, 10)}.csv` : `bachatkhata-${transactionFilter}-${new Date().toISOString().slice(0, 10)}.csv`;
+        setTimeout(() => exportTransactionsCsv(transactions, currencyCode, tFileName), delay);
         delay += 300;
       }
       if (selectedTypes.has("budgets") && budgets.length > 0) {
@@ -279,6 +282,7 @@ export default function ExportPage() {
         currencyCode,
         currencySymbol,
         dateRangeLabel,
+        transactionFilter,
       });
     }
 
@@ -470,6 +474,33 @@ export default function ExportPage() {
             );
           })}
         </div>
+
+        {selectedTypes.has("transactions") && (
+          <div className="pt-4 mt-4 border-t border-border animate-in fade-in slide-in-from-top-2">
+            <h3 className="text-xs font-bold text-foreground-secondary mb-3 uppercase tracking-wider">
+              Filter Transactions By Type
+            </h3>
+            <div className="flex flex-wrap gap-3">
+              {[
+                { id: "all", label: "All Transactions" },
+                { id: "income", label: "Income Only" },
+                { id: "expense", label: "Expenses Only" },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => setTransactionFilter(opt.id as any)}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold border-2 transition-all ${
+                    transactionFilter === opt.id
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-secondary text-foreground-muted hover:border-border-strong"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
 
       {/* ── Output Format ────────────────────────────────────────────────────── */}

@@ -29,6 +29,7 @@ export interface PdfReportOptions {
   currencyCode?: string;
   currencySymbol?: string;
   dateRangeLabel?: string;
+  transactionFilter?: string;
 }
 
 // ─── Internal Helpers ──────────────────────────────────────────────────────────
