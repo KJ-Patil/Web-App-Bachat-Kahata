@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, Mail, Lock, CheckCircle2, Phone, ArrowLeft } from "lucide-react";
@@ -12,6 +12,9 @@ import {
   RecaptchaVerifier,
   signInWithPhoneNumber,
   ConfirmationResult,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
 } from "firebase/auth";
 
 export default function LoginPage() {
@@ -19,8 +22,18 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Prefill the email from a previous "Remember me" sign-in.
+  useEffect(() => {
+    const remembered = localStorage.getItem("remembered_email");
+    if (remembered) {
+      setEmail(remembered);
+      setRememberMe(true);
+    }
+  }, []);
 
   // Phone (mobile number) sign-in state
   const [usePhone, setUsePhone] = useState(false);
@@ -121,8 +134,22 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      // "Remember me" → persist the session across browser restarts;
+      // otherwise only keep it until the tab/window is closed.
+      await setPersistence(
+        auth,
+        rememberMe ? browserLocalPersistence : browserSessionPersistence
+      );
+
       // Sign in against Firebase Authentication
       await signInWithEmailAndPassword(auth, email, password);
+
+      // Remember (or forget) the email for next time.
+      if (rememberMe) {
+        localStorage.setItem("remembered_email", email);
+      } else {
+        localStorage.removeItem("remembered_email");
+      }
 
       localStorage.setItem(
         "user_session",
@@ -148,6 +175,12 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      // Honour the "Remember me" choice for Google sign-in too.
+      await setPersistence(
+        auth,
+        rememberMe ? browserLocalPersistence : browserSessionPersistence
+      );
+
       // Open the Google sign-in popup via Firebase Authentication
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
@@ -253,6 +286,20 @@ export default function LoginPage() {
                 </button>
               </div>
             </div>
+
+            {/* Remember Me */}
+            <label className="flex items-center gap-2 cursor-pointer select-none w-fit">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                disabled={loading}
+                className="w-4 h-4 accent-primary cursor-pointer"
+              />
+              <span className="text-xs font-semibold text-foreground-secondary">
+                Remember me on this device
+              </span>
+            </label>
 
             {/* Submit Button */}
             <button
