@@ -94,6 +94,9 @@ export default function TransactionsPage() {
     storeUpdateTransaction(id, {
       amount: numAmount,
       description: editDescription,
+      // Editing the amount directly overrides any prior discount breakdown.
+      originalAmount: undefined,
+      discountAmount: undefined,
     });
     setEditingId(null);
   };
@@ -296,12 +299,24 @@ export default function TransactionsPage() {
 
                               {/* Right Columns (Amount, Action Buttons) */}
                               <div className="flex items-center justify-between sm:justify-end gap-6 shrink-0 border-t sm:border-0 pt-3 sm:pt-0 border-border">
-                                <span className={`text-base font-black tracking-tight ${
-                                  tx.type === "income" ? "text-success" : "text-foreground"
-                                }`}>
-                                  {tx.type === "income" ? "+" : "-"}
-                                  {formatAmount(tx.amount, activeCurrency)}
-                                </span>
+                                <div className="flex flex-col items-end">
+                                  <span className={`text-base font-black tracking-tight ${
+                                    tx.type === "income" ? "text-success" : "text-foreground"
+                                  }`}>
+                                    {tx.type === "income" ? "+" : "-"}
+                                    {formatAmount(tx.amount, activeCurrency)}
+                                  </span>
+                                  {tx.originalAmount !== undefined && tx.discountAmount !== undefined && (
+                                    <span className="text-[10px] font-semibold leading-tight mt-0.5">
+                                      <span className="text-foreground-muted line-through">
+                                        {formatAmount(tx.originalAmount, activeCurrency)}
+                                      </span>
+                                      <span className="text-success ml-1.5">
+                                        Saved {formatAmount(tx.discountAmount, activeCurrency)}
+                                      </span>
+                                    </span>
+                                  )}
+                                </div>
                                 
                                 <div className="flex gap-2">
                                   <button

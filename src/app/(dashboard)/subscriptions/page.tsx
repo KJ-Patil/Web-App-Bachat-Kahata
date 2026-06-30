@@ -8,17 +8,40 @@ import {
   TrendingDown,
   Layers,
   Inbox,
+  Plus,
+  Trash2,
+  X,
 } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
-import { useTransactions } from "@/core/store/dataStore";
+import {
+  useTransactions,
+  useManualSubscriptions,
+  addManualSubscription,
+  deleteManualSubscription,
+} from "@/core/store/dataStore";
 import {
   detectSubscriptions,
   summarizeSubscriptions,
+  type DetectedSubscription,
 } from "@/core/insights/subscriptions";
+
+/** A row in the tracker: either auto-detected or user-added (`manual`). */
+type SubscriptionRow = DetectedSubscription & { manual?: boolean };
+
+const SUB_CATEGORIES = [
+  "Entertainment",
+  "Software",
+  "Utilities",
+  "Health & Fitness",
+  "Education",
+  "Other",
+];
 
 export default function SubscriptionsPage() {
   const [activeCurrency, setActiveCurrency] = useState("INR");
+  const [showAddModal, setShowAddModal] = useState(false);
   const transactions = useTransactions();
+  const manualSubs = useManualSubscriptions();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -26,10 +49,33 @@ export default function SubscriptionsPage() {
     if (cur) setActiveCurrency(cur);
   }, []);
 
-  const subscriptions = useMemo(
+  const detected = useMemo(
     () => detectSubscriptions(transactions),
     [transactions]
   );
+
+  // Merge user-added subscriptions with auto-detected ones, manual first,
+  // then sorted together by annual cost so the headline figures add up.
+  const subscriptions = useMemo<SubscriptionRow[]>(() => {
+    const manualRows: SubscriptionRow[] = manualSubs.map((m) => {
+      const next = new Date();
+      next.setMonth(next.getMonth() + 1);
+      return {
+        id: m.id,
+        name: m.name,
+        category: m.category,
+        monthlyAmount: m.monthlyAmount,
+        annualCost: m.monthlyAmount * 12,
+        occurrences: 0,
+        lastChargedISO: m.createdAt,
+        nextEstimatedISO: next.toISOString(),
+        possiblyUnused: false,
+        manual: true,
+      };
+    });
+    return [...manualRows, ...detected].sort((a, b) => b.annualCost - a.annualCost);
+  }, [manualSubs, detected]);
+
   const summary = useMemo(
     () => summarizeSubscriptions(subscriptions),
     [subscriptions]
@@ -38,15 +84,25 @@ export default function SubscriptionsPage() {
   return (
     <div className="flex-1 flex flex-col p-6 space-y-6 md:p-8 max-w-5xl mx-auto w-full">
       {/* Header */}
-      <div className="space-y-1">
-        <h1 className="text-2xl font-extrabold text-foreground tracking-tight sm:text-3xl flex items-center gap-2">
-          <Repeat className="w-8 h-8 text-brand" />
-          Subscription Tracker
-        </h1>
-        <p className="text-sm font-medium text-foreground-muted">
-          Recurring payments auto-detected from your transactions — spot what&apos;s
-          draining your wallet.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-extrabold text-foreground tracking-tight sm:text-3xl flex items-center gap-2">
+            <Repeat className="w-8 h-8 text-brand" />
+            Subscription Tracker
+          </h1>
+          <p className="text-sm font-medium text-foreground-muted">
+            Recurring payments auto-detected from your transactions — spot what&apos;s
+            draining your wallet.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="btn-primary shrink-0 inline-flex items-center gap-2 px-4"
+          title="Add a subscription manually"
+        >
+          <Plus className="w-4 h-4" />
+          <span className="hidden sm:inline">Add</span>
+        </button>
       </div>
 
       {/* ── Summary KPIs ── */}
@@ -108,6 +164,11 @@ export default function SubscriptionsPage() {
                   <h3 className="font-bold text-sm text-foreground capitalize truncate">
                     {sub.name}
                   </h3>
+                  {sub.manual && (
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-primary bg-primary-lighter px-2 py-0.5 rounded-full">
+                      Manual
+                    </span>
+                  )}
                   {sub.possiblyUnused && (
                     <span className="text-[10px] font-bold uppercase tracking-wide text-warning bg-warning-light px-2 py-0.5 rounded-full">
                       Possibly unused
@@ -115,7 +176,8 @@ export default function SubscriptionsPage() {
                   )}
                 </div>
                 <p className="text-xs text-foreground-muted mt-0.5">
-                  {sub.category} · {sub.occurrences} charges · next ~
+                  {sub.category}
+                  {sub.manual ? "" : ` · ${sub.occurrences} charges`} · next ~
                   {new Date(sub.nextEstimatedISO).toLocaleDateString("en-US", {
                     month: "short",
                     day: "numeric",
@@ -132,10 +194,148 @@ export default function SubscriptionsPage() {
                   {formatAmount(sub.annualCost, activeCurrency, { decimalPlaces: 0 })}/yr
                 </p>
               </div>
+
+              {sub.manual && (
+                <button
+                  onClick={() => deleteManualSubscription(sub.id)}
+                  className="p-2 text-icon-default hover:text-error hover:bg-error-light rounded-xl transition-all cursor-pointer shrink-0"
+                  title="Remove subscription"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
             </div>
           ))}
         </section>
       )}
+
+      {showAddModal && (
+        <AddSubscriptionModal
+          activeCurrency={activeCurrency}
+          onClose={() => setShowAddModal(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function AddSubscriptionModal({
+  activeCurrency,
+  onClose,
+}: {
+  activeCurrency: string;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState(SUB_CATEGORIES[0]);
+  const [amount, setAmount] = useState("");
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const monthlyAmount = parseFloat(amount);
+    if (!name.trim() || isNaN(monthlyAmount) || monthlyAmount <= 0) return;
+    addManualSubscription({ name: name.trim(), category, monthlyAmount });
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 md:items-center p-0 md:p-4 animate-in fade-in duration-200">
+      <div
+        className="w-full bg-card border-t md:border border-border rounded-t-3xl md:rounded-2xl max-w-md shadow-2xl overflow-hidden animate-in slide-in-from-bottom md:zoom-in-95 duration-300 flex flex-col"
+        role="dialog"
+      >
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-border flex justify-between items-center bg-background-subtle">
+          <div>
+            <h3 className="text-lg font-black text-foreground">Add Subscription</h3>
+            <p className="text-xs font-semibold text-foreground-muted">
+              Track a recurring payment manually.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-icon-muted hover:text-icon-active p-1.5 rounded-lg hover:bg-secondary transition-colors cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          {/* Name */}
+          <div className="space-y-1">
+            <label htmlFor="sub-name" className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">
+              Subscription Name
+            </label>
+            <input
+              id="sub-name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="input-base w-full"
+              placeholder="e.g. Netflix, Spotify, Gym"
+              required
+              autoFocus
+            />
+          </div>
+
+          {/* Monthly amount */}
+          <div className="space-y-1">
+            <label htmlFor="sub-amount" className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">
+              Monthly Cost
+            </label>
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-4 font-bold text-foreground-secondary text-lg">
+                ₹
+              </span>
+              <input
+                id="sub-amount"
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="input-base pl-9 w-full text-lg font-extrabold tracking-tight"
+                placeholder="0.00"
+                min="0.01"
+                step="0.01"
+                required
+              />
+            </div>
+            {parseFloat(amount) > 0 && (
+              <p className="text-[11px] font-semibold text-foreground-muted pt-0.5">
+                {formatAmount(parseFloat(amount) * 12, activeCurrency, { decimalPlaces: 0 })} per year
+              </p>
+            )}
+          </div>
+
+          {/* Category */}
+          <div className="space-y-1">
+            <label htmlFor="sub-category" className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">
+              Category
+            </label>
+            <select
+              id="sub-category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="input-base w-full cursor-pointer"
+            >
+              {SUB_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={onClose} className="btn-secondary flex-1">
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary flex-1">
+              Add Subscription
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

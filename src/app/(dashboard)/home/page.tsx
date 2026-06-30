@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Bell, ArrowUpRight, ArrowDownRight, Wallet, Target, Activity, Calendar, Inbox } from "lucide-react";
+import { Bell, ArrowUpRight, ArrowDownRight, Wallet, Target, Activity, Calendar, Inbox, PiggyBank } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
 import SmsPasteZone from "@/components/automation/SmsPasteZone";
 import SafeToSpendCard from "@/components/dashboard/SafeToSpendCard";
@@ -74,6 +74,12 @@ export default function WorkspacePage() {
     const rate = getSavingsRate(transactions);
     return Math.min(Math.max(Math.round(40 + rate * 0.6), 0), 100);
   }, [transactions]);
+
+  // Total saved across all expenses via discounts.
+  const totalSaved = useMemo(
+    () => transactions.reduce((acc, t) => acc + (t.discountAmount ?? 0), 0),
+    [transactions]
+  );
 
   const hasData = transactions.length > 0;
 
@@ -225,7 +231,7 @@ export default function WorkspacePage() {
 
       {/* ────────────────── STATISTICAL GRID ────────────────── */}
       <section className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
-        <div className="grid grid-cols-1 md:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-border-strong">
+        <div className="grid grid-cols-1 md:grid-cols-5 divide-y md:divide-y-0 md:divide-x divide-border-strong">
 
           {/* Col 1: Monthly Budget Remaining */}
           <div className="p-6 space-y-2">
@@ -285,6 +291,22 @@ export default function WorkspacePage() {
               <h3 className="text-xl font-bold text-foreground">{isMounted ? transactions.length : "—"}</h3>
               <p className="text-xs text-foreground-muted">
                 {hasData ? "All local transactions verified." : "No transactions recorded yet."}
+              </p>
+            </div>
+          </div>
+
+          {/* Col 5: Total Saved via Discounts */}
+          <div className="p-6 space-y-2">
+            <div className="flex items-center justify-between text-icon-default">
+              <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">Total Saved</span>
+              <PiggyBank className="w-4 h-4 text-success" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-xl font-bold text-success">
+                {!isMounted ? "—" : formatAmount(totalSaved, activeCurrency)}
+              </h3>
+              <p className="text-xs text-foreground-muted">
+                {totalSaved > 0 ? "Saved through expense discounts." : "No discounts applied yet."}
               </p>
             </div>
           </div>

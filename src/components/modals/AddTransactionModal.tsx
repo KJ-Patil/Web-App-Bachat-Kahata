@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, Home, ShoppingBag, Tv, Layers, AlertTriangle, CheckCircle2, Briefcase, TrendingUp, Gift, DollarSign } from "lucide-react";
+import { X, Home, ShoppingBag, Tv, Layers, AlertTriangle, CheckCircle2, Briefcase, TrendingUp, Gift, DollarSign, Tag } from "lucide-react";
 import { addTransaction, getTransactions, getBudgets } from "@/core/store/dataStore";
 
 interface AddTransactionModalProps {
@@ -39,6 +39,8 @@ export default function AddTransactionModal({
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("Housing");
   const [description, setDescription] = useState("");
+  const [discountMode, setDiscountMode] = useState<"percent" | "amount">("percent");
+  const [discountValue, setDiscountValue] = useState("");
   const [success, setSuccess] = useState(false);
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
 
@@ -49,6 +51,8 @@ export default function AddTransactionModal({
       setAmount("");
       setCategory("Housing");
       setDescription("");
+      setDiscountMode("percent");
+      setDiscountValue("");
       setSuccess(false);
       setAlertMessage(null);
     }
@@ -56,17 +60,41 @@ export default function AddTransactionModal({
 
   if (!isOpen) return null;
 
+  // ── Discount math (expenses only) ──────────────────────────────
+  // The price the user typed is the actual/pre-discount price. The discount
+  // can be a percentage of it or a flat ₹ amount. The discount is clamped so
+  // it can never exceed the price (no negative final amounts).
+  const grossAmount = parseFloat(amount) || 0;
+  const rawDiscount = parseFloat(discountValue) || 0;
+  const discountAmount =
+    transactionType === "expense" && grossAmount > 0 && rawDiscount > 0
+      ? Math.min(
+          discountMode === "percent" ? (grossAmount * rawDiscount) / 100 : rawDiscount,
+          grossAmount
+        )
+      : 0;
+  const finalAmount = grossAmount - discountAmount;
+  const hasDiscount = discountAmount > 0;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount <= 0) return;
 
+    // For expenses, what hits the ledger is the post-discount price; the
+    // original price + discount are kept so the saving stays visible.
+    const effectiveAmount = transactionType === "expense" ? finalAmount : numAmount;
+
     // Create and persist the new record through the central store.
     addTransaction({
-      amount: numAmount,
+      amount: effectiveAmount,
       type: transactionType,
       category: category,
       description: description || (transactionType === "income" ? `${category} Inflow` : `${category} Cost`),
+      ...(hasDiscount && {
+        originalAmount: numAmount,
+        discountAmount: discountAmount,
+      }),
     });
 
     // Perform Budget Threshold Check (80% capacity checks) for expenses,
@@ -222,6 +250,74 @@ export default function AddTransactionModal({
                   />
                 </div>
               </div>
+
+              {/* Discount (expenses only) */}
+              {transactionType === "expense" && (
+                <div className="space-y-1">
+                  <label htmlFor="discount" className="text-xs font-bold text-foreground-secondary uppercase tracking-wider flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5" />
+                    Discount (Optional)
+                  </label>
+                  <div className="flex gap-2">
+                    {/* Mode switch: percentage vs flat amount */}
+                    <div className="grid grid-cols-2 gap-1 p-1 bg-secondary rounded-xl shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setDiscountMode("percent")}
+                        className={`px-3 py-1.5 text-sm font-bold rounded-lg transition-all cursor-pointer ${
+                          discountMode === "percent"
+                            ? "bg-card text-primary shadow-sm"
+                            : "text-foreground-secondary hover:text-foreground"
+                        }`}
+                      >
+                        %
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDiscountMode("amount")}
+                        className={`px-3 py-1.5 text-sm font-bold rounded-lg transition-all cursor-pointer ${
+                          discountMode === "amount"
+                            ? "bg-card text-primary shadow-sm"
+                            : "text-foreground-secondary hover:text-foreground"
+                        }`}
+                      >
+                        ₹
+                      </button>
+                    </div>
+                    <input
+                      id="discount"
+                      type="number"
+                      value={discountValue}
+                      onChange={(e) => setDiscountValue(e.target.value)}
+                      className="input-base w-full font-bold"
+                      placeholder={discountMode === "percent" ? "e.g. 50" : "e.g. 500"}
+                      min="0"
+                      max={discountMode === "percent" ? "100" : undefined}
+                      step="0.01"
+                    />
+                  </div>
+
+                  {/* Live final-amount breakdown */}
+                  {hasDiscount && (
+                    <div className="mt-2 rounded-xl border border-border bg-background-subtle px-4 py-3 text-sm space-y-1">
+                      <div className="flex justify-between text-foreground-muted">
+                        <span>Actual price</span>
+                        <span className="line-through">₹{grossAmount.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-success font-semibold">
+                        <span>
+                          Discount{discountMode === "percent" ? ` (${rawDiscount}%)` : ""}
+                        </span>
+                        <span>− ₹{discountAmount.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between border-t border-border pt-1.5 mt-1.5 font-extrabold text-foreground">
+                        <span>Final amount</span>
+                        <span>₹{finalAmount.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Category Grid */}
               <div className="space-y-2">

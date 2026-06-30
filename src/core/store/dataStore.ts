@@ -20,11 +20,16 @@ import { doc, onSnapshot, setDoc } from "firebase/firestore";
 
 export interface Transaction {
   id: string;
+  /** The effective amount that hits the ledger (post-discount for expenses). */
   amount: number;
   type: "expense" | "income";
   category: string;
   description: string;
   date: string;
+  /** Pre-discount price, present only when a discount was applied. */
+  originalAmount?: number;
+  /** Discount value in ₹ (already subtracted from `amount`). */
+  discountAmount?: number;
 }
 
 export interface SavingsGoal {
@@ -86,6 +91,16 @@ export interface GroupExpense {
   date: string;
 }
 
+/** A subscription the user added by hand (vs. auto-detected from transactions). */
+export interface ManualSubscription {
+  id: string;
+  name: string;
+  category: string;
+  /** Recurring charge per month, in the active currency. */
+  monthlyAmount: number;
+  createdAt: string;
+}
+
 // ──────────────── STORAGE KEYS ────────────────
 export const KEYS = {
   transactions: "transactions",
@@ -95,6 +110,7 @@ export const KEYS = {
   ledgerCustomers: "ledger_customers",
   familyGroups: "family_groups",
   familyExpenses: "family_expenses",
+  manualSubscriptions: "manual_subscriptions",
 } as const;
 
 const STORE_EVENT = "datastore:change";
@@ -111,6 +127,7 @@ const FINANCIAL_KEYS = [
   KEYS.ledgerCustomers,
   KEYS.familyGroups,
   KEYS.familyExpenses,
+  KEYS.manualSubscriptions,
   "notifications",
   "mood_logs",
   // Legacy / derived caches that were seeded with fabricated values
@@ -137,6 +154,7 @@ export function clearFinancialData(): void {
   writeJSON(KEYS.ledgerCustomers, []);
   writeJSON(KEYS.familyGroups, []);
   writeJSON(KEYS.familyExpenses, []);
+  writeJSON(KEYS.manualSubscriptions, []);
 
   // 2. Remove any remaining local-only financial keys
   FINANCIAL_KEYS.forEach((key) => {
@@ -197,6 +215,7 @@ const SYNCED_KEYS: string[] = [
   KEYS.ledgerCustomers,
   KEYS.familyGroups,
   KEYS.familyExpenses,
+  KEYS.manualSubscriptions,
 ];
 
 let currentUid: string | null = null;
@@ -308,6 +327,8 @@ export function addTransaction(
     type: input.type,
     category: input.category,
     description: input.description,
+    ...(input.originalAmount !== undefined && { originalAmount: input.originalAmount }),
+    ...(input.discountAmount !== undefined && { discountAmount: input.discountAmount }),
   };
   setTransactions([tx, ...getTransactions()]);
   return tx;
@@ -372,6 +393,32 @@ export function getFamilyExpenses(): GroupExpense[] {
 
 export function setFamilyExpenses(expenses: GroupExpense[]): void {
   writeJSON(KEYS.familyExpenses, expenses);
+}
+
+// ──────────────── MANUAL SUBSCRIPTIONS ────────────────
+export function getManualSubscriptions(): ManualSubscription[] {
+  return readJSON<ManualSubscription[]>(KEYS.manualSubscriptions, []);
+}
+
+export function setManualSubscriptions(subs: ManualSubscription[]): void {
+  writeJSON(KEYS.manualSubscriptions, subs);
+}
+
+/** Create a manual subscription (id + createdAt auto-filled) and prepend it. */
+export function addManualSubscription(
+  input: Omit<ManualSubscription, "id" | "createdAt">
+): ManualSubscription {
+  const sub: ManualSubscription = {
+    id: generateId(),
+    createdAt: new Date().toISOString(),
+    ...input,
+  };
+  setManualSubscriptions([sub, ...getManualSubscriptions()]);
+  return sub;
+}
+
+export function deleteManualSubscription(id: string): void {
+  setManualSubscriptions(getManualSubscriptions().filter((s) => s.id !== id));
 }
 
 // ──────────────── DERIVED SELECTORS ────────────────
@@ -631,6 +678,22 @@ export function useFamilyGroups(): FamilyGroup[] {
     };
   }, []);
   return groups;
+}
+
+/** Subscribe to the manual subscriptions store. */
+export function useManualSubscriptions(): ManualSubscription[] {
+  const [subs, setSubs] = useState<ManualSubscription[]>([]);
+  useEffect(() => {
+    const sync = () => setSubs(getManualSubscriptions());
+    sync();
+    window.addEventListener(STORE_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(STORE_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+  return subs;
 }
 
 /** Subscribe to the family expenses store. */
