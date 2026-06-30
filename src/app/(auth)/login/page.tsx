@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, Mail, Lock, CheckCircle2, Phone, ArrowLeft } from "lucide-react";
 import { auth } from "@/config/firebase";
+import { useTranslation } from "@/i18n/i18nContext";
 import {
   signInWithEmailAndPassword,
   GoogleAuthProvider,
@@ -19,6 +20,7 @@ import {
 
 export default function LoginPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -163,7 +165,7 @@ export default function LoginPage() {
         router.push("/home");
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Login failed.";
+      const message = err instanceof Error ? err.message : t('login.loginFailed');
       setError(message);
     } finally {
       setLoading(false);
@@ -202,7 +204,7 @@ export default function LoginPage() {
       }
     } catch (err: unknown) {
       const message =
-        err instanceof Error ? err.message : "Google sign-in failed.";
+        err instanceof Error ? err.message : t('login.googleFailed');
       setError(message);
     } finally {
       setLoading(false);
@@ -215,10 +217,10 @@ export default function LoginPage() {
         {/* Header */}
         <div className="text-center space-y-2">
           <h2 className="text-3xl font-extrabold tracking-tight text-foreground">
-            Welcome Back
+            {t('login.welcomeBack')}
           </h2>
           <p className="text-sm font-medium text-foreground-muted">
-            Access your secure personal ledger.
+            {t('login.accessLedger')}
           </p>
         </div>
 
@@ -236,7 +238,7 @@ export default function LoginPage() {
             {/* Email Field */}
             <div className="space-y-1">
               <label htmlFor="email" className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
-                Email Address
+                {t('login.emailAddress')}
               </label>
               <div className="relative">
                 <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-icon-muted">
@@ -259,7 +261,7 @@ export default function LoginPage() {
             <div className="space-y-1">
               <div className="flex justify-between items-center">
                 <label htmlFor="password" className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
-                  Password
+                  {t('login.password')}
                 </label>
               </div>
               <div className="relative">
@@ -297,7 +299,7 @@ export default function LoginPage() {
                 className="w-4 h-4 accent-primary cursor-pointer"
               />
               <span className="text-xs font-semibold text-foreground-secondary">
-                Remember me on this device
+                {t('login.rememberMe')}
               </span>
             </label>
 
@@ -310,7 +312,7 @@ export default function LoginPage() {
               {loading ? (
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
               ) : (
-                "Sign In"
+                t('login.signIn')
               )}
             </button>
           </form>
@@ -319,7 +321,7 @@ export default function LoginPage() {
           <div className="relative flex py-2 items-center">
             <div className="flex-grow border-t border-border"></div>
             <span className="flex-shrink mx-4 text-xs font-semibold text-foreground-muted uppercase tracking-wider bg-card">
-              Or Connect With
+              {t('login.orConnectWith')}
             </span>
             <div className="flex-grow border-t border-border"></div>
           </div>
@@ -350,7 +352,7 @@ export default function LoginPage() {
                 fill="#ea4335"
               />
             </svg>
-            Continue with Google
+            {t('login.continueWithGoogle')}
           </button>
 
           {/* Phone (mobile number) Login */}
@@ -364,7 +366,7 @@ export default function LoginPage() {
             disabled={loading}
           >
             <Phone className="h-5 w-5 text-icon-active" />
-            Continue with Phone
+            {t('login.continueWithPhone')}
           </button>
           </>
           ) : (
@@ -376,14 +378,14 @@ export default function LoginPage() {
               disabled={loading}
             >
               <ArrowLeft className="h-4 w-4" />
-              Back
+              {t('common.back')}
             </button>
 
             {!otpSent ? (
               <form onSubmit={handleSendOtp} className="space-y-4">
                 <div className="space-y-1">
                   <label htmlFor="phone" className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
-                    Mobile Number
+                    {t('login.mobileNumber')}
                   </label>
                   <div className="relative">
                     <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-icon-muted">
@@ -401,14 +403,14 @@ export default function LoginPage() {
                     />
                   </div>
                   <p className="text-xs text-foreground-muted">
-                    Include your country code (e.g. +91 for India).
+                    {t('login.countryCodeHint')}
                   </p>
                 </div>
                 <button type="submit" className="btn-primary w-full mt-2" disabled={loading}>
                   {loading ? (
                     <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
                   ) : (
-                    "Send OTP"
+                    t('login.sendOtp')
                   )}
                 </button>
               </form>
@@ -416,7 +418,7 @@ export default function LoginPage() {
               <form onSubmit={handleVerifyOtp} className="space-y-4">
                 <div className="space-y-1">
                   <label htmlFor="otp" className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
-                    Verification Code
+                    {t('login.verificationCode')}
                   </label>
                   <div className="relative">
                     <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-icon-muted">
@@ -436,14 +438,14 @@ export default function LoginPage() {
                     />
                   </div>
                   <p className="text-xs text-foreground-muted">
-                    Sent to {phone}.
+                    {t('login.sentTo', { phone })}
                   </p>
                 </div>
                 <button type="submit" className="btn-primary w-full mt-2" disabled={loading}>
                   {loading ? (
                     <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
                   ) : (
-                    "Verify & Sign In"
+                    t('login.verifyAndSignIn')
                   )}
                 </button>
               </form>
@@ -457,9 +459,9 @@ export default function LoginPage() {
 
         {/* Footer Link */}
         <p className="text-center text-sm text-foreground-muted">
-          New to Bachat Khata?{" "}
+          {t('login.newToBachatKhata')}{" "}
           <Link href="/register" className="text-link hover:text-link-hover font-semibold">
-            Create an account
+            {t('login.createAccount')}
           </Link>
         </p>
       </div>

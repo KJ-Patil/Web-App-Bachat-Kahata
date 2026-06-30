@@ -10,6 +10,7 @@ import {
   deleteTransaction as storeDeleteTransaction,
 } from "@/core/store/dataStore";
 import AddTransactionModal from "@/components/modals/AddTransactionModal";
+import { useTranslation } from "@/i18n/i18nContext";
 
 export default function TransactionsPage() {
   const transactions = useTransactions();
@@ -25,6 +26,8 @@ export default function TransactionsPage() {
 
   // Add Transaction modal (the list re-renders live via the useTransactions hook)
   const [isAddOpen, setIsAddOpen] = useState(false);
+
+  const { t } = useTranslation();
 
   // Load active currency preference
   useEffect(() => {
@@ -114,10 +117,10 @@ export default function TransactionsPage() {
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div className="space-y-1">
           <h1 className="text-2xl font-extrabold text-foreground tracking-tight sm:text-3xl">
-            Ledger Workspace
+            {t('transactions.ledgerWorkspace')}
           </h1>
           <p className="text-sm font-medium text-foreground-muted">
-            Review, filter, and audit active transactions.
+            {t('transactions.reviewAndAudit')}
           </p>
         </div>
         <button
@@ -125,7 +128,7 @@ export default function TransactionsPage() {
           className="btn-primary shrink-0 flex items-center justify-center gap-2"
         >
           <Plus className="w-4 h-4" />
-          Add Transaction
+          {t('transactions.addTransaction')}
         </button>
       </div>
 
@@ -141,7 +144,7 @@ export default function TransactionsPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="input-base pl-10 w-full"
-            placeholder="Filter by description or category tags..."
+            placeholder={t('transactions.filterPlaceholder')}
           />
         </div>
 
@@ -170,7 +173,7 @@ export default function TransactionsPage() {
       <section className="space-y-6 flex-grow">
         {filteredTransactions.length === 0 ? (
           <div className="bg-card border border-border rounded-2xl p-12 text-center text-foreground-muted text-sm shadow-sm">
-            No matching transactions found in your local ledger.
+            {t('transactions.noMatchingTransactions')}
           </div>
         ) : (
           <>
@@ -181,10 +184,10 @@ export default function TransactionsPage() {
 
               const blockTitle = 
                 blockKey === "today" 
-                  ? "Today" 
+                  ? t('common.today') 
                   : blockKey === "yesterday" 
-                    ? "Yesterday" 
-                    : "Previous Weeks";
+                    ? t('common.yesterday') 
+                    : t('common.previousWeeks');
 
               return (
                 <div key={blockKey} className="space-y-3">
@@ -214,7 +217,7 @@ export default function TransactionsPage() {
                                 value={editDescription}
                                 onChange={(e) => setEditDescription(e.target.value)}
                                 className="input-base flex-grow text-sm font-bold"
-                                placeholder="Edit description"
+                                placeholder={t('transactions.editDescription')}
                                 required
                               />
                               <input
@@ -251,7 +254,7 @@ export default function TransactionsPage() {
                             <div className="flex-1 flex items-center justify-between w-full p-2 bg-error-light text-error rounded-xl">
                               <span className="text-xs font-semibold flex items-center gap-1.5">
                                 <AlertCircle className="w-4 h-4" />
-                                Delete this ledger entry?
+                                {t('transactions.deleteEntry')}
                               </span>
                               <div className="flex gap-2">
                                 <button
@@ -259,14 +262,14 @@ export default function TransactionsPage() {
                                   onClick={() => handleDelete(tx.id)}
                                   className="px-3 py-1.5 text-[10px] font-bold rounded-lg bg-error text-error-foreground hover:bg-error-foreground hover:text-error border border-error transition-all cursor-pointer"
                                 >
-                                  Confirm
+                                  {t('common.confirm')}
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => setDeleteConfirmId(null)}
                                   className="px-3 py-1.5 text-[10px] font-bold rounded-lg bg-card border border-border text-foreground hover:bg-secondary transition-all cursor-pointer"
                                 >
-                                  Cancel
+                                  {t('common.cancel')}
                                 </button>
                               </div>
                             </div>
@@ -312,7 +315,7 @@ export default function TransactionsPage() {
                                         {formatAmount(tx.originalAmount, activeCurrency)}
                                       </span>
                                       <span className="text-success ml-1.5">
-                                        Saved {formatAmount(tx.discountAmount, activeCurrency)}
+                                        {t('common.saved')} {formatAmount(tx.discountAmount, activeCurrency)}
                                       </span>
                                     </span>
                                   )}

@@ -9,33 +9,34 @@ import { clearFinancialData } from "@/core/store/dataStore";
 import AddTransactionModal from "@/components/modals/AddTransactionModal";
 import CurrencyPickerSheet from "@/components/modals/CurrencyPickerSheet";
 import VoiceLoggingModal from "@/components/voice/VoiceLoggingModal";
+import { useTranslation } from "@/i18n/i18nContext";
 
 interface NavigationItem {
-  name: string;
+  nameKey: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
 }
 
 const NAV_ITEMS: NavigationItem[] = [
-  { name: "Workspace", href: "/home", icon: Home },
-  { name: "Transactions", href: "/transactions", icon: List },
-  { name: "Budgets", href: "/budgets", icon: Target },
-  { name: "Savings Goals", href: "/savings", icon: PiggyBank },
-  { name: "Notebooks", href: "/ledger", icon: BookOpen },
-  { name: "Bill Splitter", href: "/bill-splitter", icon: Receipt },
-  { name: "Family Wallet", href: "/family-wallet", icon: Users },
-  { name: "Mood Insights", href: "/mood-insights", icon: BrainCircuit },
-  { name: "Health Score", href: "/health-score", icon: Activity },
-  { name: "CIBIL Sim", href: "/cibil-simulator", icon: SlidersHorizontal },
-  { name: "Academy", href: "/academy", icon: GraduationCap },
-  { name: "Analytics", href: "/analytics", icon: BarChart3 },
-  { name: "Compare Months", href: "/comparison", icon: ArrowLeftRight },
-  { name: "Subscriptions", href: "/subscriptions", icon: Repeat },
-  { name: "What-If Sim", href: "/what-if", icon: Sparkles },
-  { name: "Streaks", href: "/streaks", icon: Flame },
-  { name: "EMI Tracker", href: "/emi-tracker", icon: CreditCard },
-  { name: "Export", href: "/export", icon: Download },
-  { name: "Settings", href: "/settings", icon: Settings },
+  { nameKey: "nav.workspace", href: "/home", icon: Home },
+  { nameKey: "nav.transactions", href: "/transactions", icon: List },
+  { nameKey: "nav.budgets", href: "/budgets", icon: Target },
+  { nameKey: "nav.savingsGoals", href: "/savings", icon: PiggyBank },
+  { nameKey: "nav.notebooks", href: "/ledger", icon: BookOpen },
+  { nameKey: "nav.billSplitter", href: "/bill-splitter", icon: Receipt },
+  { nameKey: "nav.familyWallet", href: "/family-wallet", icon: Users },
+  { nameKey: "nav.moodInsights", href: "/mood-insights", icon: BrainCircuit },
+  { nameKey: "nav.healthScore", href: "/health-score", icon: Activity },
+  { nameKey: "nav.cibilSim", href: "/cibil-simulator", icon: SlidersHorizontal },
+  { nameKey: "nav.academy", href: "/academy", icon: GraduationCap },
+  { nameKey: "nav.analytics", href: "/analytics", icon: BarChart3 },
+  { nameKey: "nav.compareMonths", href: "/comparison", icon: ArrowLeftRight },
+  { nameKey: "nav.subscriptions", href: "/subscriptions", icon: Repeat },
+  { nameKey: "nav.whatIfSim", href: "/what-if", icon: Sparkles },
+  { nameKey: "nav.streaks", href: "/streaks", icon: Flame },
+  { nameKey: "nav.emiTracker", href: "/emi-tracker", icon: CreditCard },
+  { nameKey: "nav.export", href: "/export", icon: Download },
+  { nameKey: "nav.settings", href: "/settings", icon: Settings },
 ];
 
 export default function DashboardLayout({
@@ -45,6 +46,7 @@ export default function DashboardLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { t } = useTranslation();
 
   // One-time purge of legacy seeded/demo data (the old fabricated balances).
   // Runs exactly once per device, then never touches real data the user adds.
@@ -131,7 +133,7 @@ export default function DashboardLayout({
             />
           </svg>
           <span className="ml-3 font-extrabold text-xl text-foreground tracking-tight">
-            Bachat Khata
+            {t('common.appName')}
           </span>
         </div>
 
@@ -142,7 +144,7 @@ export default function DashboardLayout({
             const Icon = item.icon;
             return (
               <Link
-                key={item.name}
+                key={item.nameKey}
                 href={item.href}
                 className={`flex items-center px-4 py-3 text-sm font-semibold rounded-xl transition-all ${
                   isActive
@@ -151,7 +153,7 @@ export default function DashboardLayout({
                 }`}
               >
                 <Icon className="mr-3 h-5 w-5 shrink-0" />
-                {item.name}
+                {t(item.nameKey)}
               </Link>
             );
           })}
@@ -165,7 +167,7 @@ export default function DashboardLayout({
             className="w-full flex items-center px-4 py-2.5 text-sm font-semibold text-foreground-secondary hover:bg-secondary rounded-xl transition-colors cursor-pointer"
           >
             <Globe className="mr-3 h-5 w-5 shrink-0 text-icon-default" />
-            Currency: <span className="ml-1 text-primary font-bold">{activeCurrency}</span>
+            {t('common.currency')}: <span className="ml-1 text-primary font-bold">{activeCurrency}</span>
           </button>
 
           {/* Central Add Transaction Trigger on Desktop */}
@@ -175,7 +177,7 @@ export default function DashboardLayout({
               className="btn-primary flex-1 flex items-center justify-center gap-2"
             >
               <Plus className="w-5 h-5" />
-              Add
+              {t('common.add')}
             </button>
             <button
               onClick={() => setIsVoiceOpen(true)}
@@ -191,7 +193,7 @@ export default function DashboardLayout({
             className="w-full flex items-center px-4 py-2.5 text-sm font-semibold text-destructive hover:bg-destructive-light rounded-xl transition-colors cursor-pointer"
           >
             <LogOut className="mr-3 h-5 w-5 shrink-0" />
-            Sign Out
+            {t('common.signOut')}
           </button>
         </div>
       </aside>
@@ -205,7 +207,7 @@ export default function DashboardLayout({
           }`}
         >
           <Home className="h-5 w-5 mb-0.5" />
-          Workspace
+          {t('nav.workspace')}
         </Link>
 
         <Link
@@ -215,7 +217,7 @@ export default function DashboardLayout({
           }`}
         >
           <List className="h-5 w-5 mb-0.5" />
-          Transactions
+          {t('nav.transactions')}
         </Link>
 
         <Link
@@ -225,7 +227,7 @@ export default function DashboardLayout({
           }`}
         >
           <BookOpen className="h-5 w-5 mb-0.5" />
-          Notebooks
+          {t('nav.notebooks')}
         </Link>
 
         {/* Central Prominent Mobile Floating Action Button (FAB) */}
@@ -253,7 +255,7 @@ export default function DashboardLayout({
           }`}
         >
           <BarChart3 className="h-5 w-5 mb-0.5" />
-          Analytics
+          {t('nav.analytics')}
         </Link>
 
         <Link
@@ -263,7 +265,7 @@ export default function DashboardLayout({
           }`}
         >
           <Settings className="h-5 w-5 mb-0.5" />
-          Settings
+          {t('nav.settings')}
         </Link>
       </nav>
 

@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Edit3, Home, ShoppingBag, Tv, Layers, Shield
 import { formatAmount } from "@/core/utils/currencyManager";
 import SetBudgetModal from "@/components/modals/SetBudgetModal";
 import { getBudgets, getTransactions } from "@/core/store/dataStore";
+import { useTranslation } from "@/i18n/i18nContext";
 
 interface CategorySummary {
   id: string;
@@ -27,6 +28,8 @@ export default function BudgetsPage() {
   const [categorySummaries, setCategorySummaries] = useState<CategorySummary[]>([]);
   const [activeCurrency, setActiveCurrency] = useState("INR");
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const { t } = useTranslation();
 
   useEffect(() => {
     loadBudgetData();
@@ -121,10 +124,10 @@ export default function BudgetsPage() {
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div className="space-y-1">
           <h1 className="text-2xl font-extrabold text-foreground tracking-tight sm:text-3xl">
-            Category Budgets
+            {t('budgets.categoryBudgets')}
           </h1>
           <p className="text-sm font-medium text-foreground-muted">
-            Establish active spending boundaries to track cash flows.
+            {t('budgets.establishBoundaries')}
           </p>
         </div>
 
@@ -133,7 +136,7 @@ export default function BudgetsPage() {
           className="btn-primary shrink-0 flex items-center justify-center gap-2"
         >
           <Edit3 className="w-4 h-4" />
-          Adjust Budgets
+          {t('budgets.adjustBudgets')}
         </button>
       </div>
 
@@ -192,7 +195,7 @@ export default function BudgetsPage() {
                   <div>
                     <h3 className="font-extrabold text-foreground text-sm">{summary.name}</h3>
                     <span className="text-[10px] font-bold text-foreground-secondary tracking-wide uppercase">
-                      {hasLimit ? `Budget: ${formatAmount(summary.limit, activeCurrency)}` : "No budget set"}
+                      {hasLimit ? `${t('budgets.budget')}: ${formatAmount(summary.limit, activeCurrency)}` : t('budgets.noBudgetSet')}
                     </span>
                   </div>
                 </div>
@@ -205,7 +208,7 @@ export default function BudgetsPage() {
                     {formatAmount(summary.spent, activeCurrency)}
                   </span>
                   <span className="text-[10px] font-semibold text-foreground-muted block">
-                    {hasLimit ? `${pct}% consumed` : "Tap Adjust Budgets to set a cap"}
+                    {hasLimit ? `${pct}% ${t('budgets.consumed')}` : t('budgets.tapToSetCap')}
                   </span>
                 </div>
               </div>
@@ -226,22 +229,22 @@ export default function BudgetsPage() {
                 {!hasLimit ? (
                   <span className="text-[10px] font-bold text-foreground-muted flex items-center gap-1 mt-1">
                     <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                    Spent {formatAmount(summary.spent, activeCurrency)} this month — no limit configured.
+                    {t('budgets.noLimitConfigured', { amount: formatAmount(summary.spent, activeCurrency) })}
                   </span>
                 ) : isOver ? (
                   <span className="text-[10px] font-bold text-error flex items-center gap-1 mt-1">
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                    Budget ceiling breached by {formatAmount(summary.spent - summary.limit, activeCurrency)}!
+                    {t('budgets.budgetBreached', { amount: formatAmount(summary.spent - summary.limit, activeCurrency) })}
                   </span>
                 ) : isWarning ? (
                   <span className="text-[10px] font-bold text-brand flex items-center gap-1 mt-1">
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                    Warning: Budget utilization is above 80% thresholds.
+                    {t('budgets.budgetWarning')}
                   </span>
                 ) : (
                   <span className="text-[10px] font-bold text-primary flex items-center gap-1 mt-1">
                     <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                    Optimal category balance status.
+                    {t('budgets.optimalStatus')}
                   </span>
                 )}
               </div>

@@ -2,9 +2,11 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslation } from "@/i18n/i18nContext";
 
 export default function SplashPage() {
   const router = useRouter();
+  const { t } = useTranslation();
 
   useEffect(() => {
     // PWA Service Worker Registration - Only in production to prevent caching issues in development
@@ -56,10 +58,10 @@ export default function SplashPage() {
 
         <div className="space-y-2">
           <h1 className="text-4xl font-extrabold tracking-tight text-foreground sm:text-5xl">
-            Bachat Khata
+            {t('splash.title')}
           </h1>
           <p className="text-sm font-semibold tracking-wide text-foreground-secondary uppercase">
-            Personal Wealth Manager
+            {t('splash.subtitle')}
           </p>
         </div>
 

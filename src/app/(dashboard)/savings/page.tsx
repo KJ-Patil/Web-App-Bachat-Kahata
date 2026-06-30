@@ -6,6 +6,7 @@ import { formatAmount } from "@/core/utils/currencyManager";
 import LogDepositModal from "@/components/modals/LogDepositModal";
 import AddGoalModal from "@/components/modals/AddGoalModal";
 import { SavingsGoal, getSavingsGoals } from "@/core/store/dataStore";
+import { useTranslation } from "@/i18n/i18nContext";
 
 export default function SavingsPage() {
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
@@ -14,6 +15,8 @@ export default function SavingsPage() {
   const [isAddGoalOpen, setIsAddGoalOpen] = useState(false);
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
   const [selectedGoalName, setSelectedGoalName] = useState("");
+
+  const { t } = useTranslation();
 
   useEffect(() => {
     loadGoalsData();
@@ -65,10 +68,10 @@ export default function SavingsPage() {
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div className="space-y-1">
           <h1 className="text-2xl font-extrabold text-foreground tracking-tight sm:text-3xl">
-            Savings Objectives
+            {t('savings.savingsObjectives')}
           </h1>
           <p className="text-sm font-medium text-foreground-muted">
-            Track goals and calculate active monthly deposit requirements.
+            {t('savings.trackGoals')}
           </p>
         </div>
 
@@ -77,7 +80,7 @@ export default function SavingsPage() {
           className="btn-primary shrink-0 flex items-center justify-center gap-2"
         >
           <Plus className="w-4 h-4" />
-          Create Goal
+          {t('savings.createGoal')}
         </button>
       </div>
 
@@ -88,7 +91,7 @@ export default function SavingsPage() {
             <Inbox className="w-6 h-6" />
           </div>
           <p className="text-sm font-medium text-foreground-muted max-w-sm">
-            No savings goals yet. Once you create a goal, your progress and required monthly deposits will appear here.
+            {t('savings.noGoalsYet')}
           </p>
         </section>
       ) : (
@@ -111,11 +114,11 @@ export default function SavingsPage() {
                   </h3>
                   <div className="flex items-center gap-1.5 text-xs text-foreground-muted">
                     <Target className="w-3.5 h-3.5 shrink-0" />
-                    <span>Target: {formatAmount(goal.target, activeCurrency)}</span>
+                    <span>{t('common.target')}: {formatAmount(goal.target, activeCurrency)}</span>
                   </div>
                   <div className="flex items-center gap-1.5 text-xs text-foreground-muted">
                     <Calendar className="w-3.5 h-3.5 shrink-0" />
-                    <span>By: {new Date(goal.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                    <span>{t('savings.by')}: {new Date(goal.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
                   </div>
                 </div>
 
@@ -151,14 +154,14 @@ export default function SavingsPage() {
               {/* Monthly Rate Accumulation Math Fields */}
               <div className="py-3 border-t border-b border-border my-2 space-y-1.5">
                 <div className="flex justify-between text-xs font-bold text-foreground-secondary uppercase tracking-wide">
-                  <span>Accumulation Rate</span>
-                  <span className="text-primary">{formatAmount(goal.current, activeCurrency)} saved</span>
+                  <span>{t('savings.accumulationRate')}</span>
+                  <span className="text-primary">{formatAmount(goal.current, activeCurrency)} {t('common.saved').toLowerCase()}</span>
                 </div>
                 
                 {isCompleted ? (
                   <div className="flex items-center gap-1.5 text-xs font-bold text-success">
                     <CheckCircleSVG />
-                    <span>Goal target achieved!</span>
+                    <span>{t('savings.goalAchieved')}</span>
                   </div>
                 ) : (
                   typeof rateInfo === "object" && (
@@ -179,7 +182,7 @@ export default function SavingsPage() {
                 className="btn-secondary w-full flex items-center justify-center gap-2 mt-2"
               >
                 <Plus className="w-4 h-4" />
-                Log Deposit
+                {t('savings.logDeposit')}
               </button>
             </div>
           );

@@ -5,6 +5,7 @@ import { Bell, ArrowUpRight, ArrowDownRight, Wallet, Target, Activity, Calendar,
 import { formatAmount } from "@/core/utils/currencyManager";
 import SmsPasteZone from "@/components/automation/SmsPasteZone";
 import SafeToSpendCard from "@/components/dashboard/SafeToSpendCard";
+import { useTranslation } from "@/i18n/i18nContext";
 import {
   useTransactions,
   useBudgets,
@@ -34,6 +35,8 @@ export default function WorkspacePage() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<string[]>([]);
   const [chartView, setChartView] = useState<"both" | "income" | "spent">("both");
+
+  const { t } = useTranslation();
 
   const transactions = useTransactions();
   const budgets = useBudgets();
@@ -123,9 +126,9 @@ export default function WorkspacePage() {
 
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return "Good Morning";
-    if (hour < 17) return "Good Afternoon";
-    return "Good Evening";
+    if (hour < 12) return t('home.goodMorning');
+    if (hour < 17) return t('home.goodAfternoon');
+    return t('home.goodEvening');
   };
 
   return (
@@ -137,7 +140,7 @@ export default function WorkspacePage() {
             {getGreeting()}, {userName}
           </h1>
           <p className="text-sm font-medium text-foreground-muted">
-            Here is your financial status overview for today.
+            {t('home.financialOverview')}
           </p>
         </div>
 
@@ -160,7 +163,7 @@ export default function WorkspacePage() {
           {showNotifications && (
             <div className="absolute right-0 mt-3 w-80 bg-card border border-border rounded-xl shadow-lg z-40 p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-150">
               <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">Alert Center</span>
+                <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">{t('home.alertCenter')}</span>
                 <button 
                   onClick={() => {
                     setNotifications([]);
@@ -168,12 +171,12 @@ export default function WorkspacePage() {
                   }} 
                   className="text-[10px] text-primary hover:underline"
                 >
-                  Clear All
+                  {t('home.clearAll')}
                 </button>
               </div>
               <div className="space-y-2 divide-y divide-border">
                 {notifications.length === 0 ? (
-                  <p className="text-xs text-foreground-muted pt-2">No new alerts right now.</p>
+                  <p className="text-xs text-foreground-muted pt-2">{t('home.noAlerts')}</p>
                 ) : (
                   notifications.map((note, i) => (
                     <p key={i} className="text-xs text-foreground-secondary pt-2 first:pt-0">{note}</p>
@@ -194,12 +197,12 @@ export default function WorkspacePage() {
       {/* ────────────────── PRIMARY BALANCE CARD ────────────────── */}
       <section className="bg-primary-lighter text-primary border border-primary-light p-6 md:p-8 rounded-2xl shadow-sm flex flex-col sm:flex-row sm:justify-between sm:items-center gap-6">
         <div className="space-y-2">
-          <span className="text-xs font-bold uppercase tracking-widest text-primary/80">Available Liquidity</span>
+          <span className="text-xs font-bold uppercase tracking-widest text-primary/80">{t('home.availableLiquidity')}</span>
           <h2 className="text-4xl font-black tracking-tight md:text-5xl">
             {formatAmount(totals.balance, activeCurrency)}
           </h2>
           <p className="text-xs font-medium text-primary/70">
-            Computed across all active offline database vaults.
+            {t('home.computedAcrossVaults')}
           </p>
         </div>
 
@@ -209,7 +212,7 @@ export default function WorkspacePage() {
               <ArrowUpRight className="w-4 h-4" />
             </div>
             <div>
-              <span className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider block">Inflow</span>
+              <span className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider block">{t('home.inflow')}</span>
               <span className="text-sm font-extrabold text-foreground">{formatAmount(monthTotals.income, activeCurrency)}</span>
             </div>
           </div>
@@ -219,7 +222,7 @@ export default function WorkspacePage() {
               <ArrowDownRight className="w-4 h-4" />
             </div>
             <div>
-              <span className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider block">Outflow</span>
+              <span className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider block">{t('home.outflow')}</span>
               <span className="text-sm font-extrabold text-foreground">{formatAmount(monthTotals.expense, activeCurrency)}</span>
             </div>
           </div>
@@ -236,7 +239,7 @@ export default function WorkspacePage() {
           {/* Col 1: Monthly Budget Remaining */}
           <div className="p-6 space-y-2">
             <div className="flex items-center justify-between text-icon-default">
-              <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">Remaining Budget</span>
+              <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">{t('home.remainingBudget')}</span>
               <Wallet className="w-4 h-4 text-primary" />
             </div>
             <div className="space-y-1">
@@ -252,7 +255,7 @@ export default function WorkspacePage() {
           {/* Col 2: Total Income Target */}
           <div className="p-6 space-y-2">
             <div className="flex items-center justify-between text-icon-default">
-              <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">Goal Progress</span>
+              <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">{t('home.goalProgress')}</span>
               <Target className="w-4 h-4 text-brand" />
             </div>
             <div className="space-y-1">
@@ -268,7 +271,7 @@ export default function WorkspacePage() {
           {/* Col 3: Financial Health Score */}
           <div className="p-6 space-y-2">
             <div className="flex items-center justify-between text-icon-default">
-              <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">Health Index</span>
+              <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">{t('home.healthIndex')}</span>
               <Activity className="w-4 h-4 text-success" />
             </div>
             <div className="space-y-1">
@@ -276,7 +279,7 @@ export default function WorkspacePage() {
                 {!isMounted || healthScore === null ? "—" : `${healthScore} / 100`}
               </h3>
               <p className="text-xs text-foreground-muted">
-                {healthScore === null ? "Add transactions to compute." : "Based on your active savings rate."}
+                {healthScore === null ? t('home.addTransactionsToCompute') : t('home.basedOnSavingsRate')}
               </p>
             </div>
           </div>
@@ -284,13 +287,13 @@ export default function WorkspacePage() {
           {/* Col 4: Ledger Entry Count */}
           <div className="p-6 space-y-2">
             <div className="flex items-center justify-between text-icon-default">
-              <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">Ledger Entries</span>
+              <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">{t('home.ledgerEntries')}</span>
               <Calendar className="w-4 h-4 text-icon-muted" />
             </div>
             <div className="space-y-1">
               <h3 className="text-xl font-bold text-foreground">{isMounted ? transactions.length : "—"}</h3>
               <p className="text-xs text-foreground-muted">
-                {hasData ? "All local transactions verified." : "No transactions recorded yet."}
+                {hasData ? t('home.allTransactionsVerified') : t('home.noTransactionsYet')}
               </p>
             </div>
           </div>
@@ -298,7 +301,7 @@ export default function WorkspacePage() {
           {/* Col 5: Total Saved via Discounts */}
           <div className="p-6 space-y-2">
             <div className="flex items-center justify-between text-icon-default">
-              <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">Total Saved</span>
+              <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">{t('home.totalSaved')}</span>
               <PiggyBank className="w-4 h-4 text-success" />
             </div>
             <div className="space-y-1">
@@ -306,7 +309,7 @@ export default function WorkspacePage() {
                 {!isMounted ? "—" : formatAmount(totalSaved, activeCurrency)}
               </h3>
               <p className="text-xs text-foreground-muted">
-                {totalSaved > 0 ? "Saved through expense discounts." : "No discounts applied yet."}
+                {totalSaved > 0 ? t('home.savedThroughDiscounts') : t('home.noDiscountsYet')}
               </p>
             </div>
           </div>
@@ -321,9 +324,9 @@ export default function WorkspacePage() {
         <div className="flex items-center justify-end">
           <div className="inline-flex items-center gap-1 bg-secondary p-1 rounded-xl border border-border">
             {([
-              { key: "both", label: "Both" },
-              { key: "income", label: "Income" },
-              { key: "spent", label: "Spent" },
+              { key: "both", label: t('common.both') },
+              { key: "income", label: t('common.income') },
+              { key: "spent", label: t('common.spent') },
             ] as const).map((opt) => (
               <button
                 key={opt.key}
@@ -347,14 +350,14 @@ export default function WorkspacePage() {
         {chartView !== "spent" && (
         <div className="bg-card border border-border p-6 rounded-2xl shadow-sm space-y-4">
           <div>
-            <h3 className="font-bold text-foreground text-lg">Balance Development</h3>
-            <p className="text-xs text-foreground-muted">Running active liquidity trajectory (7 days)</p>
+            <h3 className="font-bold text-foreground text-lg">{t('home.balanceDevelopment')}</h3>
+            <p className="text-xs text-foreground-muted">{t('home.balanceTrajectory')}</p>
           </div>
           <div className="h-72 w-full">
             {!isMounted ? (
-              <div className="w-full h-full flex items-center justify-center bg-background-subtle rounded-xl animate-pulse text-xs text-foreground-muted">Loading chart metrics...</div>
+              <div className="w-full h-full flex items-center justify-center bg-background-subtle rounded-xl animate-pulse text-xs text-foreground-muted">{t('home.loadingChartMetrics')}</div>
             ) : !hasData ? (
-              <EmptyChart message="No balance history yet — add a transaction to begin tracking." />
+              <EmptyChart message={t('home.noBalanceHistory')} />
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={lineTrendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -384,14 +387,14 @@ export default function WorkspacePage() {
         {chartView !== "income" && (
         <div className="bg-card border border-border p-6 rounded-2xl shadow-sm space-y-4">
           <div>
-            <h3 className="font-bold text-foreground text-lg">Outflow Categories</h3>
-            <p className="text-xs text-foreground-muted">Consolidated active monthly billing metrics</p>
+            <h3 className="font-bold text-foreground text-lg">{t('home.outflowCategories')}</h3>
+            <p className="text-xs text-foreground-muted">{t('home.consolidatedMetrics')}</p>
           </div>
           <div className="h-72 w-full">
             {!isMounted ? (
-              <div className="w-full h-full flex items-center justify-center bg-background-subtle rounded-xl animate-pulse text-xs text-foreground-muted">Loading chart metrics...</div>
+              <div className="w-full h-full flex items-center justify-center bg-background-subtle rounded-xl animate-pulse text-xs text-foreground-muted">{t('home.loadingChartMetrics')}</div>
             ) : categoryBarData.length === 0 ? (
-              <EmptyChart message="No expenses this month yet — your category breakdown will appear here." />
+              <EmptyChart message={t('home.noExpensesThisMonth')} />
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={categoryBarData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>

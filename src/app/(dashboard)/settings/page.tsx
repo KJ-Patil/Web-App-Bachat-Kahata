@@ -2,13 +2,18 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { User, Lock, Globe, Fingerprint, Trash2, ArrowRight, ShieldAlert, LogOut, CheckCircle2, Layers, Mail } from "lucide-react";
+import { User, Lock, Globe, Languages, Fingerprint, Trash2, ArrowRight, ShieldAlert, LogOut, CheckCircle2, Layers, Mail } from "lucide-react";
 import CurrencyPickerSheet from "@/components/modals/CurrencyPickerSheet";
+import LanguagePickerSheet from "@/components/modals/LanguagePickerSheet";
 import { clearFinancialData } from "@/core/store/dataStore";
+import { getLanguage } from "@/core/utils/languages";
+import { useTranslation } from "@/i18n/i18nContext";
 
 export default function SettingsPage() {
   const [activeCurrency, setActiveCurrency] = useState("INR");
   const [isCurrencySheetOpen, setIsCurrencySheetOpen] = useState(false);
+  const [activeLanguage, setActiveLanguage] = useState("en");
+  const [isLanguageSheetOpen, setIsLanguageSheetOpen] = useState(false);
   const [biometricsEnabled, setBiometricsEnabled] = useState(false);
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
   // Stages: 0 = confirm, 1 = final confirm, 2 = done, 3 = email verification
@@ -25,6 +30,8 @@ export default function SettingsPage() {
   const [enteredCode, setEnteredCode] = useState("");
   const [codeError, setCodeError] = useState("");
 
+  const { t } = useTranslation();
+
   // Mask the email like r****a@example.com for display
   const maskEmail = (email: string) => {
     const [name, domain] = email.split("@");
@@ -36,6 +43,9 @@ export default function SettingsPage() {
     if (typeof window !== "undefined") {
       const cur = localStorage.getItem("active_currency");
       if (cur) setActiveCurrency(cur);
+
+      const lang = localStorage.getItem("active_language");
+      if (lang) setActiveLanguage(lang);
 
       const bio = localStorage.getItem("biometrics_enabled");
       if (bio === "true") setBiometricsEnabled(true);
@@ -58,6 +68,11 @@ export default function SettingsPage() {
   const handleCurrencySelect = (code: string) => {
     setActiveCurrency(code);
     setIsCurrencySheetOpen(false);
+  };
+
+  const handleLanguageSelect = (code: string) => {
+    setActiveLanguage(code);
+    setIsLanguageSheetOpen(false);
   };
 
   const toggleBiometrics = () => {
@@ -111,10 +126,10 @@ export default function SettingsPage() {
     <div className="flex-1 flex flex-col p-6 space-y-8 md:p-8 max-w-4xl mx-auto w-full">
       <div className="space-y-1">
         <h1 className="text-2xl font-extrabold text-foreground tracking-tight sm:text-3xl">
-          System Configuration
+          {t('settings.systemConfiguration')}
         </h1>
         <p className="text-sm font-medium text-foreground-muted">
-          Manage your account preferences, security, and raw data layers.
+          {t('settings.managePreferences')}
         </p>
       </div>
 
@@ -130,15 +145,15 @@ export default function SettingsPage() {
         </div>
         <div className="flex-1 text-center sm:text-left space-y-1">
           <h2 className="text-xl font-black text-foreground">{userName}</h2>
-          <p className="text-sm font-semibold text-foreground-secondary">{userEmail || "No email on file"}</p>
+          <p className="text-sm font-semibold text-foreground-secondary">{userEmail || t('settings.noEmailOnFile')}</p>
           <span className="inline-block mt-2 text-[10px] font-bold text-success uppercase tracking-widest bg-success-light px-2 py-0.5 rounded-md">
-            Local Account
+            {t('settings.localAccount')}
           </span>
         </div>
         <div className="flex flex-col gap-3 w-full sm:w-auto">
           <button className="btn-secondary text-xs flex items-center justify-center gap-2">
             <Lock className="w-4 h-4" />
-            Reset Application PIN
+            {t('settings.resetPin')}
           </button>
         </div>
       </section>
@@ -147,7 +162,7 @@ export default function SettingsPage() {
         {/* Preference Matrices */}
         <section className="space-y-4">
           <h3 className="text-xs font-bold text-foreground-secondary uppercase tracking-widest pl-2">
-            Local Preferences
+            {t('settings.localPreferences')}
           </h3>
           <div className="bg-card border border-border-strong rounded-2xl overflow-hidden shadow-sm">
             
@@ -160,8 +175,8 @@ export default function SettingsPage() {
                   <Globe className="w-5 h-5" />
                 </div>
                 <div>
-                  <span className="font-bold text-sm text-foreground block">Global Currency</span>
-                  <span className="text-[10px] font-semibold text-foreground-muted block">Used for all ledger displays</span>
+                  <span className="font-bold text-sm text-foreground block">{t('settings.globalCurrency')}</span>
+                  <span className="text-[10px] font-semibold text-foreground-muted block">{t('settings.usedForLedger')}</span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -170,7 +185,26 @@ export default function SettingsPage() {
               </div>
             </button>
 
-            <Link 
+            <button
+              onClick={() => setIsLanguageSheetOpen(true)}
+              className="w-full flex items-center justify-between p-4 border-b border-border hover:bg-secondary transition-colors text-left"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center text-icon-default">
+                  <Languages className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="font-bold text-sm text-foreground block">{t('settings.language')}</span>
+                  <span className="text-[10px] font-semibold text-foreground-muted block">{t('settings.appDisplayLanguage')}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-black text-primary">{getLanguage(activeLanguage).nativeName}</span>
+                <ArrowRight className="w-4 h-4 text-icon-muted" />
+              </div>
+            </button>
+
+            <Link
               href="/settings/categories"
               className="w-full flex items-center justify-between p-4 border-b border-border hover:bg-secondary transition-colors text-left"
             >
@@ -179,8 +213,8 @@ export default function SettingsPage() {
                   <Layers className="w-5 h-5" />
                 </div>
                 <div>
-                  <span className="font-bold text-sm text-foreground block">Category Manager</span>
-                  <span className="text-[10px] font-semibold text-foreground-muted block">Add/Archive transaction tags</span>
+                  <span className="font-bold text-sm text-foreground block">{t('settings.categoryManager')}</span>
+                  <span className="text-[10px] font-semibold text-foreground-muted block">{t('settings.addArchiveTags')}</span>
                 </div>
               </div>
               <ArrowRight className="w-4 h-4 text-icon-muted" />
@@ -192,7 +226,7 @@ export default function SettingsPage() {
         {/* Security & Access */}
         <section className="space-y-4">
           <h3 className="text-xs font-bold text-foreground-secondary uppercase tracking-widest pl-2">
-            Access Controls
+            {t('settings.accessControls')}
           </h3>
           <div className="bg-card border border-border-strong rounded-2xl overflow-hidden shadow-sm">
             
@@ -202,8 +236,8 @@ export default function SettingsPage() {
                   <Fingerprint className="w-5 h-5" />
                 </div>
                 <div>
-                  <span className="font-bold text-sm text-foreground block">Biometric Login</span>
-                  <span className="text-[10px] font-semibold text-foreground-muted block">WebAuthn / FaceID support</span>
+                  <span className="font-bold text-sm text-foreground block">{t('settings.biometricLogin')}</span>
+                  <span className="text-[10px] font-semibold text-foreground-muted block">{t('settings.webAuthnSupport')}</span>
                 </div>
               </div>
               
@@ -222,7 +256,7 @@ export default function SettingsPage() {
                   <LogOut className="w-5 h-5" />
                 </div>
                 <div>
-                  <span className="font-bold text-sm text-foreground block group-hover:text-error transition-colors">Sign Out Everywhere</span>
+                  <span className="font-bold text-sm text-foreground block group-hover:text-error transition-colors">{t('settings.signOutEverywhere')}</span>
                 </div>
               </div>
             </button>
@@ -237,10 +271,10 @@ export default function SettingsPage() {
           <div className="space-y-1">
             <h3 className="text-error font-extrabold flex items-center gap-2">
               <Trash2 className="w-5 h-5" />
-              Danger Zone
+              {t('settings.dangerZone')}
             </h3>
             <p className="text-xs font-semibold text-error/80 max-w-sm">
-              Permanently erase all local IndexedDB state containers, transactions, and preferences from this device.
+              {t('settings.dangerDescription')}
             </p>
           </div>
           <button
@@ -250,7 +284,7 @@ export default function SettingsPage() {
             }}
             className="bg-destructive text-destructive-foreground font-black px-6 py-3 rounded-xl hover:opacity-90 transition-opacity w-full sm:w-auto shrink-0"
           >
-            Clear All Data
+            {t('settings.clearAllData')}
           </button>
         </div>
 
@@ -263,17 +297,23 @@ export default function SettingsPage() {
             className="mt-0.5 w-4 h-4 accent-error cursor-pointer shrink-0"
           />
           <span className="text-xs font-semibold text-error/80">
-            Require email verification before deleting — we&apos;ll send a code to{" "}
-            <span className="font-bold text-error">{maskEmail(userEmail)}</span> that you must enter to confirm.
+            {t('settings.requireEmailVerification', { email: maskEmail(userEmail) })}
           </span>
         </label>
       </section>
 
-      <CurrencyPickerSheet 
-        isOpen={isCurrencySheetOpen} 
+      <CurrencyPickerSheet
+        isOpen={isCurrencySheetOpen}
         onClose={() => setIsCurrencySheetOpen(false)}
         activeCurrencyCode={activeCurrency}
         onSelect={handleCurrencySelect}
+      />
+
+      <LanguagePickerSheet
+        isOpen={isLanguageSheetOpen}
+        onClose={() => setIsLanguageSheetOpen(false)}
+        activeLanguageCode={activeLanguage}
+        onSelect={handleLanguageSelect}
       />
 
       {/* Clear Data Multi-stage Modal */}
@@ -287,15 +327,15 @@ export default function SettingsPage() {
                   <ShieldAlert className="w-8 h-8" />
                 </div>
                 <div className="space-y-2">
-                  <h3 className="text-xl font-black text-foreground">Are you absolutely sure?</h3>
+                  <h3 className="text-xl font-black text-foreground">{t('settings.areYouSure')}</h3>
                   <p className="text-xs font-semibold text-foreground-muted">
-                    This action will drop all local tables and wipe your ledger clean. It cannot be undone.
+                    {t('settings.wipeWarning')}
                   </p>
                 </div>
                 <div className="flex gap-3 pt-2">
-                  <button onClick={() => setIsClearModalOpen(false)} className="btn-secondary flex-1">Cancel</button>
+                  <button onClick={() => setIsClearModalOpen(false)} className="btn-secondary flex-1">{t('common.cancel')}</button>
                   <button onClick={handleClearData} className="bg-destructive text-destructive-foreground font-bold px-4 rounded-xl flex-1 hover:opacity-90 transition-opacity">
-                    Yes, wipe it
+                    {t('settings.yesWipeIt')}
                   </button>
                 </div>
               </>
@@ -307,15 +347,15 @@ export default function SettingsPage() {
                   <Trash2 className="w-8 h-8" />
                 </div>
                 <div className="space-y-2">
-                  <h3 className="text-xl font-black text-error">Final Confirmation</h3>
+                  <h3 className="text-xl font-black text-error">{t('settings.finalConfirmation')}</h3>
                   <p className="text-xs font-bold text-foreground-muted">
-                    Pressing delete now will immediately destroy the local database.
+                    {t('settings.deleteNowWarning')}
                   </p>
                 </div>
                 <div className="flex gap-3 pt-2">
-                  <button onClick={() => setIsClearModalOpen(false)} className="btn-secondary flex-1">Abort</button>
+                  <button onClick={() => setIsClearModalOpen(false)} className="btn-secondary flex-1">{t('settings.abort')}</button>
                   <button onClick={handleClearData} className="bg-destructive text-destructive-foreground font-black px-4 rounded-xl flex-1 shadow-[0_0_15px_rgba(220,38,38,0.5)]">
-                    DELETE NOW
+                    {t('settings.deleteNow')}
                   </button>
                 </div>
               </>
@@ -327,16 +367,16 @@ export default function SettingsPage() {
                   <Mail className="w-8 h-8" />
                 </div>
                 <div className="space-y-2">
-                  <h3 className="text-xl font-black text-foreground">Verify it&apos;s you</h3>
+                  <h3 className="text-xl font-black text-foreground">{t('settings.verifyItsYou')}</h3>
                   <p className="text-xs font-semibold text-foreground-muted">
                     We sent a 6-digit code to{" "}
-                    <span className="font-bold text-foreground">{maskEmail(userEmail)}</span>. Enter it below to permanently delete your data.
+                  <span className="font-bold text-foreground">{maskEmail(userEmail)}</span>. {t('settings.enterCodeToDelete')}
                   </p>
                 </div>
 
                 {/* Demo hint — shows the code on screen since no real email is sent */}
                 <div className="text-[11px] font-bold text-foreground-muted bg-secondary rounded-lg py-2 px-3">
-                  Demo code: <span className="font-black tracking-widest text-foreground">{sentCode}</span>
+                  {t('settings.demoCode')}: <span className="font-black tracking-widest text-foreground">{sentCode}</span>
                 </div>
 
                 <input
@@ -358,14 +398,14 @@ export default function SettingsPage() {
 
                 <div className="flex gap-3 pt-1">
                   <button onClick={() => setIsClearModalOpen(false)} className="btn-secondary flex-1">
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                   <button
                     onClick={handleVerifyCode}
                     disabled={enteredCode.length !== 6}
                     className="bg-destructive text-destructive-foreground font-black px-4 rounded-xl flex-1 hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    Verify &amp; Delete
+                    {t('settings.verifyAndDelete')}
                   </button>
                 </div>
               </>
@@ -376,9 +416,9 @@ export default function SettingsPage() {
                 <div className="w-16 h-16 rounded-full bg-success-light text-success flex items-center justify-center mx-auto mb-4">
                   <CheckCircle2 className="w-8 h-8" />
                 </div>
-                <h3 className="text-xl font-black text-foreground">Wipe Complete</h3>
+                <h3 className="text-xl font-black text-foreground">{t('settings.wipeComplete')}</h3>
                 <p className="text-xs font-bold text-foreground-muted">
-                  Restarting application shell...
+                  {t('settings.restartingApp')}
                 </p>
               </div>
             )}
