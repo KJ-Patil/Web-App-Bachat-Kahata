@@ -9,6 +9,7 @@ import { clearFinancialData } from "@/core/store/dataStore";
 import AddTransactionModal from "@/components/modals/AddTransactionModal";
 import CurrencyPickerSheet from "@/components/modals/CurrencyPickerSheet";
 import VoiceLoggingModal from "@/components/voice/VoiceLoggingModal";
+import { refreshExchangeRates } from "@/core/utils/currencyManager";
 import { useTranslation } from "@/i18n/i18nContext";
 
 interface NavigationItem {
@@ -73,6 +74,8 @@ export default function DashboardLayout({
       if (cur) {
         setActiveCurrency(cur);
       }
+      // Keep live FX rates fresh so currency display converts, not just relabels.
+      refreshExchangeRates();
     }
   }, []);
 

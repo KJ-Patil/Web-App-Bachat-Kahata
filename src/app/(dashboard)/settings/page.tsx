@@ -2,10 +2,27 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { User, Lock, Globe, Languages, Fingerprint, Trash2, ArrowRight, ShieldAlert, LogOut, CheckCircle2, Layers, Mail } from "lucide-react";
+import { User, Lock, Globe, Languages, Fingerprint, Trash2, ArrowRight, ShieldAlert, LogOut, CheckCircle2, Layers, Info, HelpCircle, Database, CloudUpload, Clock, RotateCcw, RefreshCw } from "lucide-react";
 import CurrencyPickerSheet from "@/components/modals/CurrencyPickerSheet";
 import LanguagePickerSheet from "@/components/modals/LanguagePickerSheet";
-import { clearFinancialData } from "@/core/store/dataStore";
+import { auth } from "@/config/firebase";
+import {
+  EmailAuthProvider,
+  GoogleAuthProvider,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
+  onAuthStateChanged,
+  type User as FirebaseUser,
+} from "firebase/auth";
+import {
+  clearFinancialData,
+  createCloudBackup,
+  listCloudBackups,
+  deleteCloudBackup,
+  restoreCloudBackup,
+  getCurrentUid,
+  BackupRecord
+} from "@/core/store/dataStore";
 import { getLanguage } from "@/core/utils/languages";
 import { useTranslation } from "@/i18n/i18nContext";
 
@@ -24,13 +41,118 @@ export default function SettingsPage() {
   const [userEmail, setUserEmail] = useState("");
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
 
-  // Email verification (demo only — no real email is sent)
+  // Identity re-verification for the destructive wipe — real Firebase
+  // re-authentication (no fake on-screen code, no email backend needed).
   const [emailVerifyEnabled, setEmailVerifyEnabled] = useState(false);
-  const [sentCode, setSentCode] = useState("");
-  const [enteredCode, setEnteredCode] = useState("");
+  const [reauthPassword, setReauthPassword] = useState("");
+  const [reauthMethod, setReauthMethod] = useState<"password" | "google" | "unsupported">("password");
+  const [reauthLoading, setReauthLoading] = useState(false);
   const [codeError, setCodeError] = useState("");
+  const [fbUser, setFbUser] = useState<FirebaseUser | null>(null);
 
   const { t } = useTranslation();
+
+  // Backup & Recovery state
+  const [backups, setBackups] = useState<BackupRecord[]>([]);
+  const [loadingBackups, setLoadingBackups] = useState(false);
+  const [backupActionLoading, setBackupActionLoading] = useState(false);
+  const [selectedBackup, setSelectedBackup] = useState<BackupRecord | null>(null);
+  const [backupModalType, setBackupModalType] = useState<"restore" | "delete" | null>(null);
+  const [actionMessage, setActionMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  const uid = getCurrentUid();
+
+  const loadBackups = async () => {
+    setLoadingBackups(true);
+    try {
+      const list = await listCloudBackups();
+      setBackups(list);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingBackups(false);
+    }
+  };
+
+  useEffect(() => {
+    if (uid) {
+      loadBackups();
+    }
+  }, [uid]);
+
+  // Track the Firebase user so we know which re-auth method to offer.
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => setFbUser(u));
+    return () => unsub();
+  }, []);
+
+  const handleCreateBackup = async () => {
+    setBackupActionLoading(true);
+    setActionMessage(null);
+    try {
+      await createCloudBackup();
+      await loadBackups();
+      setActionMessage({ text: t("settings.backupSuccess"), type: "success" });
+    } catch (err) {
+      console.error(err);
+      setActionMessage({ text: t("settings.backupFailed"), type: "error" });
+    } finally {
+      setBackupActionLoading(false);
+      setTimeout(() => setActionMessage(null), 4000);
+    }
+  };
+
+  const handleRestoreBackup = async () => {
+    if (!selectedBackup) return;
+    setBackupActionLoading(true);
+    setActionMessage(null);
+    setBackupModalType(null);
+    try {
+      await restoreCloudBackup(selectedBackup.id);
+      setActionMessage({ text: t("settings.restoreSuccess"), type: "success" });
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (err) {
+      console.error(err);
+      setActionMessage({ text: "Failed to restore backup.", type: "error" });
+      setBackupActionLoading(false);
+    }
+  };
+
+  const handleDeleteBackup = async () => {
+    if (!selectedBackup) return;
+    setBackupActionLoading(true);
+    setActionMessage(null);
+    setBackupModalType(null);
+    try {
+      await deleteCloudBackup(selectedBackup.id);
+      await loadBackups();
+      setActionMessage({ text: t("settings.deleteBackupSuccess"), type: "success" });
+    } catch (err) {
+      console.error(err);
+      setActionMessage({ text: "Failed to delete backup.", type: "error" });
+    } finally {
+      setBackupActionLoading(false);
+      setTimeout(() => setActionMessage(null), 4000);
+    }
+  };
+
+  const formatBackupDate = (isoStr: string) => {
+    try {
+      const d = new Date(isoStr);
+      return d.toLocaleString(activeLanguage === "hi" ? "hi-IN" : "en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+      });
+    } catch {
+      return isoStr;
+    }
+  };
 
   // Mask the email like r****a@example.com for display
   const maskEmail = (email: string) => {
@@ -98,10 +220,17 @@ export default function SettingsPage() {
   const handleClearData = () => {
     if (clearStage === 0) {
       if (emailVerifyEnabled) {
-        // Demo: generate a 6-digit code and "send" it (shown on screen, no real email)
-        const code = String(Math.floor(100000 + Math.random() * 900000));
-        setSentCode(code);
-        setEnteredCode("");
+        // Pick the real re-auth method from the signed-in user's provider.
+        const user = auth.currentUser ?? fbUser;
+        const providers = user?.providerData.map((p) => p.providerId) ?? [];
+        setReauthMethod(
+          providers.includes("password")
+            ? "password"
+            : providers.includes("google.com")
+              ? "google"
+              : "unsupported"
+        );
+        setReauthPassword("");
         setCodeError("");
         setClearStage(3);
       } else {
@@ -112,13 +241,33 @@ export default function SettingsPage() {
     }
   };
 
-  // Verify the entered code, then purge (demo only)
-  const handleVerifyCode = () => {
-    if (enteredCode.trim() === sentCode) {
-      setCodeError("");
+  // Re-authenticate the user against Firebase, then purge. This genuinely
+  // proves the account owner is present (no fake code, no email backend).
+  const handleReauthAndPurge = async () => {
+    const user = auth.currentUser ?? fbUser;
+    if (!user) {
+      setCodeError("You must be signed in to verify your identity.");
+      return;
+    }
+
+    setReauthLoading(true);
+    setCodeError("");
+    try {
+      if (reauthMethod === "google") {
+        await reauthenticateWithPopup(user, new GoogleAuthProvider());
+      } else {
+        if (!user.email) {
+          setCodeError("No email on this account to verify against.");
+          setReauthLoading(false);
+          return;
+        }
+        const credential = EmailAuthProvider.credential(user.email, reauthPassword);
+        await reauthenticateWithCredential(user, credential);
+      }
       purgeData();
-    } else {
-      setCodeError("Incorrect code. Please try again.");
+    } catch {
+      setCodeError("Verification failed. Please check your credentials and try again.");
+      setReauthLoading(false);
     }
   };
 
@@ -220,6 +369,38 @@ export default function SettingsPage() {
               <ArrowRight className="w-4 h-4 text-icon-muted" />
             </Link>
 
+            <Link
+              href="/settings/about"
+              className="w-full flex items-center justify-between p-4 border-b border-border hover:bg-secondary transition-colors text-left"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center text-icon-default">
+                  <Info className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="font-bold text-sm text-foreground block">{t('settings.aboutUs')}</span>
+                  <span className="text-[10px] font-semibold text-foreground-muted block">{t('settings.aboutDescription')}</span>
+                </div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-icon-muted" />
+            </Link>
+
+            <Link
+              href="/help"
+              className="w-full flex items-center justify-between p-4 hover:bg-secondary transition-colors text-left"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center text-icon-default">
+                  <HelpCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="font-bold text-sm text-foreground block">{t('nav.helpSupport')}</span>
+                  <span className="text-[10px] font-semibold text-foreground-muted block">{t('settings.helpDescription')}</span>
+                </div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-icon-muted" />
+            </Link>
+
           </div>
         </section>
 
@@ -264,6 +445,132 @@ export default function SettingsPage() {
           </div>
         </section>
       </div>
+
+      {/* Backup & Recovery */}
+      <section className="bg-card border border-border-strong rounded-2xl p-6 shadow-sm flex flex-col gap-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-primary-lighter text-primary flex items-center justify-center">
+              <Database className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-foreground text-lg">
+                {t('settings.backupAndRecovery')}
+              </h3>
+              <p className="text-xs font-semibold text-foreground-muted">
+                {t('settings.backupDescription')}
+              </p>
+            </div>
+          </div>
+
+          {uid && (
+            <button
+              onClick={handleCreateBackup}
+              disabled={backupActionLoading || loadingBackups}
+              className="btn-primary text-xs flex items-center justify-center gap-2 w-full sm:w-auto self-start sm:self-center disabled:opacity-50"
+            >
+              {backupActionLoading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  {t('settings.creatingBackup')}
+                </>
+              ) : (
+                <>
+                  <CloudUpload className="w-4 h-4" />
+                  {t('settings.backupNow')}
+                </>
+              )}
+            </button>
+          )}
+        </div>
+
+        {actionMessage && (
+          <div
+            className={`p-3.5 rounded-xl border text-xs font-bold flex items-center gap-2 animate-in fade-in duration-200 ${
+              actionMessage.type === "success"
+                ? "bg-success-light/30 border-success/20 text-success"
+                : "bg-error-light/30 border-error/20 text-error"
+            }`}
+          >
+            {actionMessage.type === "success" ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+            ) : (
+              <ShieldAlert className="w-4 h-4 shrink-0" />
+            )}
+            {actionMessage.text}
+          </div>
+        )}
+
+        {!uid ? (
+          <div className="bg-secondary/40 border border-border-strong rounded-xl p-4 text-center">
+            <ShieldAlert className="w-8 h-8 text-foreground-muted mx-auto mb-2" />
+            <p className="text-xs font-bold text-foreground">Cloud Backups Disabled</p>
+            <p className="text-[11px] font-semibold text-foreground-muted mt-1 max-w-md mx-auto">
+              Please sign in to a cloud account to enable automated and manual ledger backups to Firebase.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold text-foreground-secondary uppercase tracking-widest pl-1">
+              Cloud Backups List
+            </h4>
+            
+            {loadingBackups ? (
+              <div className="space-y-2 py-4">
+                <div className="h-10 bg-secondary/50 rounded-xl animate-pulse w-full" />
+                <div className="h-10 bg-secondary/50 rounded-xl animate-pulse w-full" />
+              </div>
+            ) : backups.length === 0 ? (
+              <p className="text-xs font-semibold text-foreground-muted text-center py-6 bg-secondary/20 rounded-xl">
+                {t('settings.noBackups')}
+              </p>
+            ) : (
+              <div className="border border-border rounded-xl divide-y divide-border overflow-hidden bg-background-subtle">
+                {backups.map((backup) => (
+                  <div key={backup.id} className="flex items-center justify-between p-3.5 hover:bg-secondary/35 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <Clock className="w-4 h-4 text-foreground-muted shrink-0" />
+                      <div>
+                        <span className="font-bold text-sm text-foreground block">
+                          {formatBackupDate(backup.createdAt)}
+                        </span>
+                        <span className="text-[10px] font-semibold text-foreground-muted block">
+                          {backup.label}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-3 shrink-0">
+                      <button
+                        onClick={() => {
+                          setSelectedBackup(backup);
+                          setBackupModalType("restore");
+                        }}
+                        disabled={backupActionLoading}
+                        className="text-xs font-black text-primary hover:text-primary-hover transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        {t('settings.restore')}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedBackup(backup);
+                          setBackupModalType("delete");
+                        }}
+                        disabled={backupActionLoading}
+                        className="text-xs font-black text-error hover:text-error/80 transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        {t('common.delete') || "Delete"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* Core Data Purging Actions */}
       <section className="bg-error-light border border-error/20 rounded-2xl p-6 mt-4 flex flex-col gap-5 shadow-sm">
@@ -364,49 +671,70 @@ export default function SettingsPage() {
             {clearStage === 3 && (
               <>
                 <div className="w-16 h-16 rounded-full bg-error-light text-error flex items-center justify-center mx-auto mb-4">
-                  <Mail className="w-8 h-8" />
+                  <Lock className="w-8 h-8" />
                 </div>
                 <div className="space-y-2">
                   <h3 className="text-xl font-black text-foreground">{t('settings.verifyItsYou')}</h3>
                   <p className="text-xs font-semibold text-foreground-muted">
-                    We sent a 6-digit code to{" "}
-                  <span className="font-bold text-foreground">{maskEmail(userEmail)}</span>. {t('settings.enterCodeToDelete')}
+                    {reauthMethod === "google" ? (
+                      <>Confirm your identity with Google to permanently delete everything.</>
+                    ) : reauthMethod === "unsupported" ? (
+                      <>Re-authentication isn&apos;t available for your sign-in method. Continue to the final confirmation.</>
+                    ) : (
+                      <>
+                        Re-enter the password for{" "}
+                        <span className="font-bold text-foreground">{maskEmail(userEmail)}</span> to permanently delete everything.
+                      </>
+                    )}
                   </p>
                 </div>
 
-                {/* Demo hint — shows the code on screen since no real email is sent */}
-                <div className="text-[11px] font-bold text-foreground-muted bg-secondary rounded-lg py-2 px-3">
-                  {t('settings.demoCode')}: <span className="font-black tracking-widest text-foreground">{sentCode}</span>
-                </div>
-
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={enteredCode}
-                  onChange={(e) => {
-                    setEnteredCode(e.target.value.replace(/\D/g, ""));
-                    setCodeError("");
-                  }}
-                  placeholder="••••••"
-                  className="input-base w-full text-center text-2xl font-black tracking-[0.5em]"
-                />
+                {reauthMethod === "password" && (
+                  <input
+                    type="password"
+                    value={reauthPassword}
+                    onChange={(e) => {
+                      setReauthPassword(e.target.value);
+                      setCodeError("");
+                    }}
+                    placeholder="Your password"
+                    autoFocus
+                    className="input-base w-full text-center font-bold"
+                  />
+                )}
 
                 {codeError && (
                   <p className="text-xs font-bold text-error">{codeError}</p>
                 )}
 
                 <div className="flex gap-3 pt-1">
-                  <button onClick={() => setIsClearModalOpen(false)} className="btn-secondary flex-1">
+                  <button
+                    onClick={() => setIsClearModalOpen(false)}
+                    disabled={reauthLoading}
+                    className="btn-secondary flex-1"
+                  >
                     {t('common.cancel')}
                   </button>
-                  <button
-                    onClick={handleVerifyCode}
-                    disabled={enteredCode.length !== 6}
-                    className="bg-destructive text-destructive-foreground font-black px-4 rounded-xl flex-1 hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {t('settings.verifyAndDelete')}
-                  </button>
+                  {reauthMethod === "unsupported" ? (
+                    <button
+                      onClick={() => setClearStage(1)}
+                      className="bg-destructive text-destructive-foreground font-black px-4 rounded-xl flex-1 hover:opacity-90 transition-opacity"
+                    >
+                      Continue
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleReauthAndPurge}
+                      disabled={reauthLoading || (reauthMethod === "password" && !reauthPassword)}
+                      className="bg-destructive text-destructive-foreground font-black px-4 rounded-xl flex-1 hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {reauthLoading
+                        ? "Verifying…"
+                        : reauthMethod === "google"
+                          ? "Confirm with Google"
+                          : t('settings.verifyAndDelete')}
+                    </button>
+                  )}
                 </div>
               </>
             )}
@@ -423,6 +751,63 @@ export default function SettingsPage() {
               </div>
             )}
 
+          </div>
+        </div>
+      )}
+
+      {/* Backup Action Confirmation Modals */}
+      {backupModalType && selectedBackup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in duration-200">
+          <div className="w-full bg-card border border-border rounded-2xl max-w-sm shadow-2xl p-6 space-y-6 text-center animate-in zoom-in-95 duration-300">
+            {backupModalType === "restore" && (
+              <>
+                <div className="w-16 h-16 rounded-full bg-primary-lighter text-primary flex items-center justify-center mx-auto mb-4">
+                  <RotateCcw className="w-8 h-8" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-xl font-black text-foreground">{t('settings.confirmRestore')}</h3>
+                  <p className="text-xs font-semibold text-foreground-muted">
+                    {t('settings.restoreWarning')}
+                  </p>
+                  <p className="text-[11px] font-extrabold text-primary bg-primary-lighter/40 py-2 rounded-lg">
+                    Target: {formatBackupDate(selectedBackup.createdAt)} ({selectedBackup.label})
+                  </p>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button onClick={() => { setBackupModalType(null); setSelectedBackup(null); }} className="btn-secondary flex-1">
+                    {t('common.cancel')}
+                  </button>
+                  <button onClick={handleRestoreBackup} className="bg-primary text-white font-bold px-4 rounded-xl flex-1 hover:opacity-90 transition-opacity">
+                    {t('settings.restore')}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {backupModalType === "delete" && (
+              <>
+                <div className="w-16 h-16 rounded-full bg-error-light text-error flex items-center justify-center mx-auto mb-4">
+                  <Trash2 className="w-8 h-8" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-xl font-black text-error">{t('settings.deleteBackup') || "Delete Backup"}</h3>
+                  <p className="text-xs font-semibold text-foreground-muted">
+                    {t('settings.deleteBackupWarning') || "This will permanently delete this backup snapshot. This cannot be undone. Are you sure?"}
+                  </p>
+                  <p className="text-[11px] font-extrabold text-error bg-error-light/40 py-2 rounded-lg">
+                    Target: {formatBackupDate(selectedBackup.createdAt)} ({selectedBackup.label})
+                  </p>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button onClick={() => { setBackupModalType(null); setSelectedBackup(null); }} className="btn-secondary flex-1">
+                    {t('common.cancel')}
+                  </button>
+                  <button onClick={handleDeleteBackup} className="bg-destructive text-destructive-foreground font-bold px-4 rounded-xl flex-1 hover:opacity-90 transition-opacity">
+                    {t('common.delete')}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -51,7 +51,8 @@
     "streaks": "Streaks",
     "emiTracker": "EMI Tracker",
     "export": "Export",
-    "settings": "Settings"
+    "settings": "Settings",
+    "helpSupport": "Help & Support"
   },
   "splash": {
     "title": "Bachat Khata",
@@ -193,7 +194,29 @@
     "languageSettings": "Language Settings",
     "chooseLanguage": "Choose your preferred Indian language.",
     "searchLanguageOrState": "Search language or state...",
-    "noMatchingLanguages": "No matching languages found."
+    "noMatchingLanguages": "No matching languages found.",
+    "aboutUs": "About Us & Legal",
+    "aboutDescription": "Terms, Privacy, and App Information.",
+    "aboutKhatabook": "About Bachat Khata (Khatabook)",
+    "termsConditions": "Terms & Conditions",
+    "privacyPolicy": "Privacy Policy",
+    "helpDescription": "FAQs and direct support channels.",
+    "backupAndRecovery": "Backup & Recovery",
+    "backupDescription": "Save snapshots to the cloud or restore from backups.",
+    "backupNow": "Backup Now",
+    "creatingBackup": "Creating backup...",
+    "backupSuccess": "Backup created successfully!",
+    "backupFailed": "Failed to create backup.",
+    "restore": "Restore",
+    "confirmRestore": "Restore Backup",
+    "restoreWarning": "This will overwrite your current active ledger with the backup data. Are you sure?",
+    "restoring": "Restoring backup...",
+    "restoreSuccess": "Backup restored successfully!",
+    "noBackups": "No backups stored in the cloud yet.",
+    "deleteBackup": "Delete Backup",
+    "deleteBackupWarning": "This will permanently delete this backup snapshot. This cannot be undone. Are you sure?",
+    "deletingBackup": "Deleting backup...",
+    "deleteBackupSuccess": "Backup deleted successfully!"
   },
   "categories": {
     "categoryManager": "Category Manager",
@@ -538,5 +561,30 @@
     "processing": "Processing...",
     "tryAgain": "Try again",
     "notSupported": "Voice input is not supported on this browser."
+  },
+  "help": {
+    "title": "Help & Support",
+    "subtitle": "Have questions or need assistance? We are here to help.",
+    "searchPlaceholder": "Search frequently asked questions...",
+    "contactSupport": "Direct Support Channels",
+    "whatsappTitle": "WhatsApp Support",
+    "whatsappDesc": "Get instant help and query resolution over WhatsApp chat.",
+    "whatsappBtn": "Chat on WhatsApp",
+    "callTitle": "Phone Support",
+    "callDesc": "Speak to our customer support representative directly.",
+    "callBtn": "Call Now",
+    "faqsTitle": "Frequently Asked Questions",
+    "faq1Question": "What is Bachat Khata?",
+    "faq1Answer": "Bachat Khata is a secure, offline-first personal wealth manager designed to track transactions, simulate budgets, calculate financial health scores, manage family wallets, and more.",
+    "faq2Question": "Where is my financial data stored?",
+    "faq2Answer": "Your data is stored locally on your device for fast offline access. If you are signed in, it is automatically synchronized to a secure database in the cloud (Firebase Firestore).",
+    "faq3Question": "How does Voice Logging work?",
+    "faq3Answer": "You can click the Microphone button in the workspace sidebar/tray and speak in Hindi, English, or Hinglish (e.g. 'मैंने ₹५०० खाने पर खर्च किये'). Our system will automatically parse the amount and category, then record it as a transaction.",
+    "faq4Question": "What is the Financial Health Score?",
+    "faq4Answer": "It is a 0-100 score computed based on your savings rate, budget discipline, consistency of logs, debt-to-income ratio, and spending stability.",
+    "faq5Question": "How can I split bills with friends?",
+    "faq5Answer": "Use the 'Bill Splitter' from the sidebar. You can input multiple expenses and our system will use an optimization algorithm to minimize the number of repayments.",
+    "faq6Question": "How do I reset my data?",
+    "faq6Answer": "Go to Settings and scroll down to the 'Purge & Reset All Data' section. Note that this action is permanent and cannot be undone."
   }
 }

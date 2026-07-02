@@ -6,5 +6,13 @@ service cloud.firestore {
     match /users/{userId}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
+
+    // Shared family-group directory, keyed by the 6-digit join code. Any signed-in
+    // user may look up a code to join, create a new group, or update member count.
+    // The recursive wildcard also covers the per-group `expenses` subcollection so
+    // members share one live expense history and pool balance.
+    match /familyGroups/{document=**} {
+      allow read, write: if request.auth != null;
+    }
   }
 }

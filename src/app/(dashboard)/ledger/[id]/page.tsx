@@ -257,6 +257,11 @@ export default function CustomerLedgerPage({
             <Phone className="w-3.5 h-3.5 text-icon-muted" />
             {customer.phone}
           </span>
+          {customer.description && (
+            <div className="text-xs font-bold text-foreground-secondary/90 bg-background/50 border border-border px-3 py-1.5 rounded-lg mt-2 inline-block max-w-sm">
+              Notes: <span className="font-semibold text-foreground-muted">{customer.description}</span>
+            </div>
+          )}
         </div>
 
         <div className="text-left sm:text-right space-y-1">

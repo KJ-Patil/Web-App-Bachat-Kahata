@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { ChevronLeft, ChevronRight, Edit3, Home, ShoppingBag, Tv, Layers, ShieldCheck, AlertTriangle, Play } from "lucide-react";
+import { ChevronLeft, ChevronRight, Edit3, ShieldCheck, AlertTriangle, Play } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
 import SetBudgetModal from "@/components/modals/SetBudgetModal";
 import { getBudgets, getTransactions } from "@/core/store/dataStore";
+import { getActiveCategories, resolveCategoryIcon } from "@/core/utils/categories";
 import { useTranslation } from "@/i18n/i18nContext";
 
 interface CategorySummary {
@@ -14,13 +15,6 @@ interface CategorySummary {
   spent: number;
   limit: number;
 }
-
-const CATEGORIES_META = [
-  { id: "Housing", name: "Housing", icon: Home },
-  { id: "Groceries", name: "Groceries", icon: ShoppingBag },
-  { id: "Entertainment", name: "Entertainment", icon: Tv },
-  { id: "Investment", name: "Investment", icon: Layers },
-];
 
 export default function BudgetsPage() {
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -52,16 +46,17 @@ export default function BudgetsPage() {
     const targetMonth = selectedDate.getMonth();
     const targetYear = selectedDate.getFullYear();
 
-    // Map summaries
-    const summaries = CATEGORIES_META.map((meta) => {
-      const limit = activeBudgets[meta.id] || 0;
+    // Map summaries over the user's active expense categories (referenced by
+    // name, matching how transactions and budgets are keyed).
+    const summaries = getActiveCategories("expense").map((cat) => {
+      const limit = activeBudgets[cat.name] || 0;
 
       const spent = transactions
         .filter((tx) => {
           const txDate = new Date(tx.date);
           return (
             tx.type === "expense" &&
-            tx.category === meta.id &&
+            tx.category === cat.name &&
             txDate.getMonth() === targetMonth &&
             txDate.getFullYear() === targetYear
           );
@@ -69,9 +64,9 @@ export default function BudgetsPage() {
         .reduce((sum, tx) => sum + tx.amount, 0);
 
       return {
-        id: meta.id,
-        name: meta.name,
-        icon: meta.icon,
+        id: cat.name,
+        name: cat.name,
+        icon: resolveCategoryIcon(cat.iconName),
         spent,
         limit,
       };

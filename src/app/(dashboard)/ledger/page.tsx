@@ -51,6 +51,7 @@ export default function LedgerPage() {
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [newType, setNewType] = useState<"customer" | "supplier">("customer");
   const [initialBalance, setInitialBalance] = useState("");
+  const [newDescription, setNewDescription] = useState("");
 
   useEffect(() => {
     loadLedgerData();
@@ -117,6 +118,7 @@ export default function LedgerPage() {
       type: newType,
       balance: finalBalance,
       history,
+      description: newDescription || undefined,
     };
 
     setLedgerCustomers([newCust, ...customers]);
@@ -127,6 +129,7 @@ export default function LedgerPage() {
     setPhoneError(null);
     setNewType("customer");
     setInitialBalance("");
+    setNewDescription("");
     setIsAddOpen(false);
   };
 
@@ -386,6 +389,11 @@ export default function LedgerPage() {
                           {getLastActivityLabel(c)}
                         </span>
                       </div>
+                      {c.description && (
+                        <p className="text-[11px] text-foreground-secondary italic mt-1 font-medium truncate max-w-xs sm:max-w-md">
+                          {c.description}
+                        </p>
+                      )}
                     </div>
                   </Link>
 
@@ -546,6 +554,20 @@ export default function LedgerPage() {
                   className="input-base w-full"
                   placeholder="0"
                   min="0"
+                />
+              </div>
+
+              {/* Account Description / Notes */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">
+                  Account Description / Notes
+                </label>
+                <input
+                  type="text"
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  className="input-base w-full"
+                  placeholder="e.g. Regular wholesale grocery buyer"
                 />
               </div>
 

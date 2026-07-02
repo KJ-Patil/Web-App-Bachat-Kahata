@@ -2,22 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus, Archive, ArchiveRestore, Home, ShoppingBag, Tv, Layers, Navigation, Bus, HeartPulse, Shield, Book, Briefcase, Zap, Coffee, LucideIcon } from "lucide-react";
+import { ArrowLeft, Plus, Archive, ArchiveRestore, Layers } from "lucide-react";
 import AddCategoryModal, { CategoryData } from "@/components/modals/AddCategoryModal";
-
-// Map strings to icons
-const iconMap: Record<string, LucideIcon> = {
-  Home, ShoppingBag, Tv, Layers, Navigation, Bus, HeartPulse, Shield, Book, Briefcase, Zap, Coffee
-};
-
-const DEFAULT_CATEGORIES: CategoryData[] = [
-  { id: "cat-1", name: "Housing", type: "expense", color: "#1d4ed8", iconName: "Home" },
-  { id: "cat-2", name: "Groceries", type: "expense", color: "#059669", iconName: "ShoppingBag" },
-  { id: "cat-3", name: "Entertainment", type: "expense", color: "#7c3aed", iconName: "Tv" },
-  { id: "cat-4", name: "Investment", type: "expense", color: "#0891b2", iconName: "Layers" },
-  { id: "cat-5", name: "Travel", type: "expense", color: "#ea580c", iconName: "Navigation" },
-  { id: "cat-6", name: "Salary", type: "income", color: "#65a30d", iconName: "Briefcase" },
-];
+import { CATEGORY_ICONS as iconMap, DEFAULT_CATEGORIES } from "@/core/utils/categories";
 
 export default function CategoryManagerPage() {
   const [categories, setCategories] = useState<CategoryData[]>([]);

@@ -1,34 +1,17 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, Home, ShoppingBag, Tv, Layers, AlertTriangle, CheckCircle2, Briefcase, TrendingUp, Gift, DollarSign, Tag } from "lucide-react";
+import { X, AlertTriangle, CheckCircle2, Tag } from "lucide-react";
 import { addTransaction, getTransactions, getBudgets } from "@/core/store/dataStore";
+import { getActiveCategories, resolveCategoryIcon } from "@/core/utils/categories";
+import { getCurrencySymbol } from "@/core/utils/currencyManager";
+import type { CategoryData } from "@/components/modals/AddCategoryModal";
 
 interface AddTransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
 }
-
-interface CategoryOption {
-  id: string;
-  name: string;
-  icon: React.ComponentType<{ className?: string }>;
-}
-
-const CATEGORY_OPTIONS: CategoryOption[] = [
-  { id: "Housing", name: "Housing", icon: Home },
-  { id: "Groceries", name: "Groceries", icon: ShoppingBag },
-  { id: "Entertainment", name: "Entertainment", icon: Tv },
-  { id: "Investment", name: "Investment", icon: Layers },
-];
-
-const INCOME_CATEGORY_OPTIONS: CategoryOption[] = [
-  { id: "Salary", name: "Salary", icon: Briefcase },
-  { id: "Investment", name: "Investment", icon: TrendingUp },
-  { id: "Gift", name: "Gift", icon: Gift },
-  { id: "Other", name: "Other", icon: DollarSign },
-];
 
 export default function AddTransactionModal({
   isOpen,
@@ -37,19 +20,31 @@ export default function AddTransactionModal({
 }: AddTransactionModalProps) {
   const [transactionType, setTransactionType] = useState<"expense" | "income">("expense");
   const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState("Housing");
+  const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
   const [discountMode, setDiscountMode] = useState<"percent" | "amount">("percent");
   const [discountValue, setDiscountValue] = useState("");
   const [success, setSuccess] = useState(false);
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
+  // Category lists are read from the user's managed categories each time the
+  // modal opens, so newly created / archived categories show up immediately.
+  const [expenseCategories, setExpenseCategories] = useState<CategoryData[]>([]);
+  const [incomeCategories, setIncomeCategories] = useState<CategoryData[]>([]);
+  // Currency symbol shown in the amount/discount fields follows the user's
+  // active currency instead of a hardcoded rupee sign.
+  const [activeCurrency, setActiveCurrency] = useState("INR");
 
   useEffect(() => {
     // Reset state on open
     if (isOpen) {
+      const expenses = getActiveCategories("expense");
+      const incomes = getActiveCategories("income");
+      setExpenseCategories(expenses);
+      setIncomeCategories(incomes);
+      setActiveCurrency(localStorage.getItem("active_currency") || "INR");
       setTransactionType("expense");
       setAmount("");
-      setCategory("Housing");
+      setCategory(expenses[0]?.name ?? "");
       setDescription("");
       setDiscountMode("percent");
       setDiscountValue("");
@@ -59,6 +54,8 @@ export default function AddTransactionModal({
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const currencySymbol = getCurrencySymbol(activeCurrency) || "₹";
 
   // ── Discount math (expenses only) ──────────────────────────────
   // The price the user typed is the actual/pre-discount price. The discount
@@ -196,8 +193,8 @@ export default function AddTransactionModal({
                     type="button"
                     onClick={() => {
                       setTransactionType("expense");
-                      if (!CATEGORY_OPTIONS.find(c => c.id === category)) {
-                        setCategory(CATEGORY_OPTIONS[0].id);
+                      if (!expenseCategories.find(c => c.name === category)) {
+                        setCategory(expenseCategories[0]?.name ?? "");
                       }
                     }}
                     className={`py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
@@ -212,8 +209,8 @@ export default function AddTransactionModal({
                     type="button"
                     onClick={() => {
                       setTransactionType("income");
-                      if (!INCOME_CATEGORY_OPTIONS.find(c => c.id === category)) {
-                        setCategory(INCOME_CATEGORY_OPTIONS[0].id);
+                      if (!incomeCategories.find(c => c.name === category)) {
+                        setCategory(incomeCategories[0]?.name ?? "");
                       }
                     }}
                     className={`py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
@@ -234,7 +231,7 @@ export default function AddTransactionModal({
                 </label>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 flex items-center pl-4 font-bold text-foreground-secondary text-lg">
-                    ₹
+                    {currencySymbol}
                   </span>
                   <input
                     id="amount"
@@ -281,7 +278,7 @@ export default function AddTransactionModal({
                             : "text-foreground-secondary hover:text-foreground"
                         }`}
                       >
-                        ₹
+                        {currencySymbol}
                       </button>
                     </div>
                     <input
@@ -302,17 +299,17 @@ export default function AddTransactionModal({
                     <div className="mt-2 rounded-xl border border-border bg-background-subtle px-4 py-3 text-sm space-y-1">
                       <div className="flex justify-between text-foreground-muted">
                         <span>Actual price</span>
-                        <span className="line-through">₹{grossAmount.toFixed(2)}</span>
+                        <span className="line-through">{currencySymbol}{grossAmount.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-success font-semibold">
                         <span>
                           Discount{discountMode === "percent" ? ` (${rawDiscount}%)` : ""}
                         </span>
-                        <span>− ₹{discountAmount.toFixed(2)}</span>
+                        <span>− {currencySymbol}{discountAmount.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between border-t border-border pt-1.5 mt-1.5 font-extrabold text-foreground">
                         <span>Final amount</span>
-                        <span>₹{finalAmount.toFixed(2)}</span>
+                        <span>{currencySymbol}{finalAmount.toFixed(2)}</span>
                       </div>
                     </div>
                   )}
@@ -325,14 +322,14 @@ export default function AddTransactionModal({
                   {transactionType === "expense" ? "Choose Budget Category" : "Choose Income Category"}
                 </span>
                 <div className="grid grid-cols-4 gap-3">
-                  {(transactionType === "expense" ? CATEGORY_OPTIONS : INCOME_CATEGORY_OPTIONS).map((opt) => {
-                    const Icon = opt.icon;
-                    const isSelected = category === opt.id;
+                  {(transactionType === "expense" ? expenseCategories : incomeCategories).map((opt) => {
+                    const Icon = resolveCategoryIcon(opt.iconName);
+                    const isSelected = category === opt.name;
                     return (
                       <button
                         key={opt.id}
                         type="button"
-                        onClick={() => setCategory(opt.id)}
+                        onClick={() => setCategory(opt.name)}
                         className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all cursor-pointer ${
                           isSelected
                             ? "bg-primary-lighter text-primary border-primary font-bold scale-105"

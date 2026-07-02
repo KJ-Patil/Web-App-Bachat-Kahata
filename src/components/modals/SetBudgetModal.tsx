@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { X, Check, Save } from "lucide-react";
 import { getBudgets, setBudgets } from "@/core/store/dataStore";
+import { getActiveCategories } from "@/core/utils/categories";
 
 interface SetBudgetModalProps {
   isOpen: boolean;
@@ -10,25 +11,28 @@ interface SetBudgetModalProps {
   onSuccess?: () => void;
 }
 
-const CATEGORIES = ["Housing", "Groceries", "Entertainment", "Investment"];
-
 export default function SetBudgetModal({
   isOpen,
   onClose,
   onSuccess,
 }: SetBudgetModalProps) {
-  const [category, setCategory] = useState("Housing");
+  const [category, setCategory] = useState("");
   const [limit, setLimit] = useState("");
   const [success, setSuccess] = useState(false);
+  // Budgetable categories are the user's active expense categories.
+  const [categories, setCategories] = useState<string[]>([]);
 
   useEffect(() => {
     if (isOpen) {
-      setCategory("Housing");
+      const names = getActiveCategories("expense").map((c) => c.name);
+      setCategories(names);
       setSuccess(false);
 
-      // Load current limit if exists
+      // Default to the first category and preload its current limit if set.
+      const first = names[0] ?? "";
+      setCategory(first);
       const budgets = getBudgets();
-      setLimit(budgets["Housing"] ? String(budgets["Housing"]) : "");
+      setLimit(first && budgets[first] ? String(budgets[first]) : "");
     }
   }, [isOpen]);
 
@@ -100,7 +104,7 @@ export default function SetBudgetModal({
                   Select Category
                 </span>
                 <div className="flex flex-wrap gap-2">
-                  {CATEGORIES.map((cat) => {
+                  {categories.map((cat) => {
                     const isSelected = category === cat;
                     return (
                       <button

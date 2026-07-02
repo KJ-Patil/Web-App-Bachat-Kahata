@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { auth, db } from "@/config/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, collection, getDocs, deleteDoc, query, orderBy, getDoc } from "firebase/firestore";
 
 /**
  * Central data layer — the single source of truth for the app.
@@ -71,6 +71,7 @@ export interface LedgerCustomer {
   /** positive: credit (customer owes us), negative: debit (we owe supplier) */
   balance: number;
   history: LedgerEntry[];
+  description?: string;
 }
 
 export interface FamilyGroup {
@@ -78,6 +79,12 @@ export interface FamilyGroup {
   name: string;
   code: string;
   members: number;
+  /**
+   * Display names of everyone in the group, synced from the shared
+   * `familyGroups` directory doc. `members` stays as the headcount
+   * (== memberNames.length once populated) for backward compatibility.
+   */
+  memberNames?: string[];
   totalBalance: number;
   spendingLimit?: number;
 }
@@ -395,6 +402,20 @@ export function setFamilyExpenses(expenses: GroupExpense[]): void {
   writeJSON(KEYS.familyExpenses, expenses);
 }
 
+/**
+ * A group's shared pool balance is the sum of its expense amounts (base INR).
+ * Deriving it from the expense list — rather than tracking a standalone number —
+ * makes the balance a single source of truth that can never drift from the
+ * history every member sees. Invalid/NaN amounts are ignored so one bad record
+ * can't poison the total.
+ */
+export function computeGroupPoolBalance(expenses: GroupExpense[]): number {
+  return expenses.reduce(
+    (total, exp) => total + (Number.isFinite(exp.amount) ? exp.amount : 0),
+    0
+  );
+}
+
 // ──────────────── MANUAL SUBSCRIPTIONS ────────────────
 export function getManualSubscriptions(): ManualSubscription[] {
   return readJSON<ManualSubscription[]>(KEYS.manualSubscriptions, []);
@@ -710,4 +731,104 @@ export function useFamilyExpenses(): GroupExpense[] {
     };
   }, []);
   return expenses;
+}
+
+// ──────────────── CLOUD BACKUP & RESTORE ────────────────
+
+export interface BackupRecord {
+  id: string;
+  createdAt: string;
+  label: string;
+  data: Record<string, unknown>;
+}
+
+/** Check if the user is authenticated (exposed for conditional UI) */
+export function getCurrentUid(): string | null {
+  return currentUid;
+}
+
+/** Create a timestamped backup snapshot in the cloud */
+export async function createCloudBackup(label?: string): Promise<string> {
+  if (!currentUid) {
+    throw new Error("User must be signed in to create cloud backups.");
+  }
+  
+  const backupId = `backup_${Date.now()}`;
+  const backupRef = doc(db, "users", currentUid, "backups", backupId);
+  
+  const backupData: Record<string, unknown> = {};
+  for (const key of SYNCED_KEYS) {
+    const localVal = localStorage.getItem(key);
+    backupData[key] = localVal ? JSON.parse(localVal) : (key === KEYS.budgets ? {} : []);
+  }
+  
+  const backupRecord = {
+    id: backupId,
+    createdAt: new Date().toISOString(),
+    label: label || `Backup (${new Date().toLocaleString()})`,
+    data: backupData
+  };
+  
+  await setDoc(backupRef, backupRecord);
+  return backupId;
+}
+
+/** List all available backups from Firestore */
+export async function listCloudBackups(): Promise<BackupRecord[]> {
+  if (!currentUid) {
+    return [];
+  }
+  
+  const backupsColl = collection(db, "users", currentUid, "backups");
+  const q = query(backupsColl, orderBy("createdAt", "desc"));
+  const snap = await getDocs(q);
+  
+  const list: BackupRecord[] = [];
+  snap.forEach((d) => {
+    const data = d.data();
+    list.push({
+      id: d.id,
+      createdAt: data.createdAt || "",
+      label: data.label || "Untitled Backup",
+      data: data.data || {}
+    });
+  });
+  
+  return list;
+}
+
+/** Delete a backup document from Firestore */
+export async function deleteCloudBackup(backupId: string): Promise<void> {
+  if (!currentUid) {
+    throw new Error("User must be signed in to delete cloud backups.");
+  }
+  
+  const docRef = doc(db, "users", currentUid, "backups", backupId);
+  await deleteDoc(docRef);
+}
+
+/** Restore a backup by writing it locally and syncing active firestore docs */
+export async function restoreCloudBackup(backupId: string): Promise<void> {
+  if (!currentUid) {
+    throw new Error("User must be signed in to restore cloud backups.");
+  }
+  
+  const backupDocRef = doc(db, "users", currentUid, "backups", backupId);
+  const backupSnap = await getDoc(backupDocRef);
+  
+  if (!backupSnap.exists()) {
+    throw new Error("Backup document not found.");
+  }
+  
+  const backup = backupSnap.data() as BackupRecord;
+  const backupData = backup.data || {};
+  
+  // Overwrite local storage and active Firestore docs
+  for (const key of SYNCED_KEYS) {
+    const val = backupData[key] !== undefined ? backupData[key] : (key === KEYS.budgets ? {} : []);
+    localStorage.setItem(key, JSON.stringify(val));
+    await setDoc(doc(db, "users", currentUid, "appData", key), { value: val });
+  }
+  
+  emitChange();
 }
