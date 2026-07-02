@@ -33,6 +33,9 @@ if (typeof window !== "undefined") {
     localCache: persistentLocalCache({
       tabManager: persistentMultipleTabManager(),
     }),
+    // Silently drop `undefined` fields instead of throwing on setDoc/updateDoc,
+    // so optional fields left unset (e.g. a customer's description) don't crash writes.
+    ignoreUndefinedProperties: true,
   });
 } else {
   db = getFirestore(app);

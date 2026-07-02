@@ -53,6 +53,22 @@ export default function TransactionsPage() {
     return matchesSearch && matchesTab;
   });
 
+  // Income / expense totals for just the currently-shown (searched/filtered)
+  // transactions, surfaced as KPI cards under the search box while searching.
+  const filteredTotals = filteredTransactions.reduce(
+    (acc, tx) => {
+      if (tx.type === "income") {
+        acc.income += tx.amount;
+        acc.incomeCount += 1;
+      } else {
+        acc.expense += tx.amount;
+        acc.expenseCount += 1;
+      }
+      return acc;
+    },
+    { income: 0, expense: 0, incomeCount: 0, expenseCount: 0 }
+  );
+
   // Relative Date sorting classification helper
   const groupTransactionsByDate = (txs: Transaction[]) => {
     const today = new Date().toDateString();
@@ -147,6 +163,45 @@ export default function TransactionsPage() {
             placeholder={t('transactions.filterPlaceholder')}
           />
         </div>
+
+        {/* Income / expense totals for the currently-searched transactions */}
+        {searchQuery.trim() !== "" && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-background-subtle border border-border p-3.5 rounded-xl flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-success-light text-success flex items-center justify-center shrink-0 border border-success/15">
+                <ArrowUpRight className="w-4 h-4 stroke-[2.5px]" />
+              </div>
+              <div>
+                <span className="text-[9px] font-bold text-foreground-secondary uppercase tracking-wider block">
+                  Total Income
+                  <span className="ml-1.5 normal-case text-foreground-muted">
+                    · {filteredTotals.incomeCount} {filteredTotals.incomeCount === 1 ? "time" : "times"}
+                  </span>
+                </span>
+                <span className="text-lg font-black tracking-tight text-success">
+                  {formatAmount(filteredTotals.income, activeCurrency)}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-background-subtle border border-border p-3.5 rounded-xl flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-error-light text-error flex items-center justify-center shrink-0 border border-error/15">
+                <ArrowDownRight className="w-4 h-4 stroke-[2.5px]" />
+              </div>
+              <div>
+                <span className="text-[9px] font-bold text-foreground-secondary uppercase tracking-wider block">
+                  Total Expense
+                  <span className="ml-1.5 normal-case text-foreground-muted">
+                    · {filteredTotals.expenseCount} {filteredTotals.expenseCount === 1 ? "time" : "times"}
+                  </span>
+                </span>
+                <span className="text-lg font-black tracking-tight text-error">
+                  {formatAmount(filteredTotals.expense, activeCurrency)}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Tab Segment Selector */}
         <div className="flex border-b border-border">

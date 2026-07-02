@@ -118,7 +118,9 @@ export default function LedgerPage() {
       type: newType,
       balance: finalBalance,
       history,
-      description: newDescription || undefined,
+      // Only attach description when provided — Firestore's setDoc() rejects
+      // fields explicitly set to `undefined`, so omit the key instead.
+      ...(newDescription ? { description: newDescription } : {}),
     };
 
     setLedgerCustomers([newCust, ...customers]);
@@ -170,6 +172,18 @@ export default function LedgerPage() {
     });
     return { toGet, toGive, settledCount, netBalance: toGet - toGive };
   }, [customers]);
+
+  // Receivable / payable totals for just the currently-shown (searched) accounts,
+  // surfaced as KPI cards under the search box while a search is active.
+  const filteredStats = useMemo(() => {
+    let receivable = 0;
+    let payable = 0;
+    filteredCustomers.forEach((c) => {
+      if (c.balance > 0) receivable += c.balance;
+      else if (c.balance < 0) payable += Math.abs(c.balance);
+    });
+    return { receivable, payable };
+  }, [filteredCustomers]);
 
   const filterTabs: { key: FilterTab; label: string; count: number }[] = [
     { key: "all", label: "All Books", count: customers.length },
@@ -329,6 +343,39 @@ export default function LedgerPage() {
               placeholder="Search accounts by name or phone digits..."
             />
           </div>
+
+          {/* Receivable / payable totals for the currently-searched accounts */}
+          {searchQuery.trim() !== "" && (
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <div className="bg-card border border-border p-3.5 rounded-xl shadow-sm flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-success-light text-success flex items-center justify-center shrink-0 border border-success/15">
+                  <TrendingUp className="w-4 h-4 stroke-[2.5px]" />
+                </div>
+                <div>
+                  <span className="text-[9px] font-bold text-foreground-secondary uppercase tracking-wider block">
+                    Total Receivable
+                  </span>
+                  <span className="text-lg font-black tracking-tight text-success">
+                    {formatAmount(filteredStats.receivable, activeCurrency)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-card border border-border p-3.5 rounded-xl shadow-sm flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-error-light text-error flex items-center justify-center shrink-0 border border-error/15">
+                  <TrendingDown className="w-4 h-4 stroke-[2.5px]" />
+                </div>
+                <div>
+                  <span className="text-[9px] font-bold text-foreground-secondary uppercase tracking-wider block">
+                    Total Payable
+                  </span>
+                  <span className="text-lg font-black tracking-tight text-error">
+                    {formatAmount(filteredStats.payable, activeCurrency)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
