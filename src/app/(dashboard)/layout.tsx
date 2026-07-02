@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { Home, Settings, LogOut, Plus, Globe, List, BookOpen, BarChart3, Download, CreditCard, Mic, Users, Activity, SlidersHorizontal, Receipt, BrainCircuit, GraduationCap, Target, PiggyBank, Sparkles, Flame, Repeat, ArrowLeftRight } from "lucide-react";
+import { Home, Settings, LogOut, Plus, Globe, List, BookOpen, BarChart3, Download, CreditCard, Mic, Users, Activity, SlidersHorizontal, Receipt, BrainCircuit, GraduationCap, Target, PiggyBank, Sparkles, Flame, Repeat, ArrowLeftRight, CalendarDays } from "lucide-react";
 import { useLazyCatchUpSync } from "@/core/store/CatchUpSync";
 import { clearFinancialData } from "@/core/store/dataStore";
 import AddTransactionModal from "@/components/modals/AddTransactionModal";
@@ -21,6 +21,7 @@ interface NavigationItem {
 const NAV_ITEMS: NavigationItem[] = [
   { nameKey: "nav.workspace", href: "/home", icon: Home },
   { nameKey: "nav.transactions", href: "/transactions", icon: List },
+  { nameKey: "nav.calendar", href: "/calendar", icon: CalendarDays },
   { nameKey: "nav.budgets", href: "/budgets", icon: Target },
   { nameKey: "nav.savingsGoals", href: "/savings", icon: PiggyBank },
   { nameKey: "nav.notebooks", href: "/ledger", icon: BookOpen },

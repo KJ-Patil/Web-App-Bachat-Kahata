@@ -35,6 +35,7 @@
   "nav": {
     "workspace": "Workspace",
     "transactions": "Transactions",
+    "calendar": "Calendar",
     "budgets": "Budgets",
     "savingsGoals": "Savings Goals",
     "notebooks": "Notebooks",

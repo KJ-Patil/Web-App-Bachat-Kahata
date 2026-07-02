@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import {
   Download,
   FileSpreadsheet,
+  Sheet,
   FileText,
   Calendar,
   ArrowRight,
@@ -23,11 +24,12 @@ import {
   type ExportableSavingsGoal,
 } from "@/core/utils/csvExporter";
 import { generatePdfReport, type PdfTransaction, type PdfBudget, type PdfSavingsGoal } from "@/core/utils/pdfGenerator";
+import { exportWorkbookXlsx } from "@/core/utils/excelExporter";
 import { getCurrencySymbol } from "@/core/utils/currencyManager";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-type OutputFormat = "csv" | "pdf";
+type OutputFormat = "excel" | "csv" | "pdf";
 type DataType = "transactions" | "budgets" | "savings";
 
 interface RawTransaction {
@@ -116,7 +118,7 @@ export default function ExportPage() {
     new Set(["transactions", "budgets", "savings"])
   );
   const [transactionFilter, setTransactionFilter] = useState<"all" | "income" | "expense">("all");
-  const [format, setFormat] = useState<OutputFormat>("csv");
+  const [format, setFormat] = useState<OutputFormat>("excel");
 
   // Raw localStorage data
   const [rawTransactions, setRawTransactions] = useState<RawTransaction[]>([]);
@@ -259,7 +261,21 @@ export default function ExportPage() {
       dateRangeLabel,
     } = buildExportables();
 
-    if (format === "csv") {
+    if (format === "excel") {
+      // Single styled workbook with one sheet per selected data type
+      await exportWorkbookXlsx({
+        transactions: selectedTypes.has("transactions") ? transactions : [],
+        budgets: selectedTypes.has("budgets") ? budgets : [],
+        savingsGoals: selectedTypes.has("savings") ? goals : [],
+        currencyCode,
+        currencySymbol,
+        dateRangeLabel,
+        filename:
+          transactionFilter === "all"
+            ? `bachatkhata-export-${new Date().toISOString().slice(0, 10)}.xlsx`
+            : `bachatkhata-${transactionFilter}-${new Date().toISOString().slice(0, 10)}.xlsx`,
+      });
+    } else if (format === "csv") {
       // Stagger multiple CSV downloads so the browser doesn't block them
       let delay = 0;
       if (selectedTypes.has("transactions") && transactions.length > 0) {
@@ -289,7 +305,7 @@ export default function ExportPage() {
     // Brief "done" flash
     setTimeout(() => setStatus("done"), 600);
     setTimeout(() => setStatus("idle"), 2800);
-  }, [selectedTypes, totalRecords, format, buildExportables, currencyCode]);
+  }, [selectedTypes, totalRecords, format, buildExportables, currencyCode, transactionFilter]);
 
   // ── Quick date range presets ───────────────────────────────────────────────
   const applyToday = () => {
@@ -509,7 +525,44 @@ export default function ExportPage() {
           Output Format
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Excel tile */}
+          <button
+            onClick={() => setFormat("excel")}
+            className={`flex items-start gap-4 p-4 rounded-xl border-2 text-left transition-all cursor-pointer ${
+              format === "excel"
+                ? "border-success bg-success/5 shadow-sm"
+                : "border-border bg-secondary/30 hover:border-border-strong hover:bg-secondary/60"
+            }`}
+          >
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+              format === "excel"
+                ? "bg-success/10 text-success"
+                : "bg-secondary text-foreground-muted"
+            }`}>
+              <Sheet className="w-5 h-5" />
+            </div>
+            <div className="space-y-0.5 flex-1">
+              <div className="flex items-center justify-between">
+                <span className={`text-sm font-extrabold ${format === "excel" ? "text-success" : "text-foreground"}`}>
+                  Excel Workbook
+                </span>
+                {format === "excel" ? (
+                  <span className="text-[9px] font-bold text-success bg-success/10 px-2 py-0.5 rounded-full">
+                    Selected
+                  </span>
+                ) : (
+                  <span className="text-[9px] font-bold text-success bg-success/10 px-2 py-0.5 rounded-full">
+                    Recommended
+                  </span>
+                )}
+              </div>
+              <p className="text-[10px] font-medium text-foreground-muted leading-relaxed">
+                Formatted <span className="font-bold">.xlsx</span> with coloured headers, gridlines &amp; one tab per section.
+              </p>
+            </div>
+          </button>
+
           {/* CSV tile */}
           <button
             onClick={() => setFormat("csv")}
