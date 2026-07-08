@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { X, Check, Save } from "lucide-react";
 import { getBudgets, setBudgets } from "@/core/store/dataStore";
 import { getActiveCategories } from "@/core/utils/categories";
+import CalculatorPopover from "@/components/inputs/CalculatorPopover";
 
 interface SetBudgetModalProps {
   isOpen: boolean;
@@ -129,8 +130,8 @@ export default function SetBudgetModal({
                 <label htmlFor="limit" className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">
                   Monthly Capital Limit (INR ₹)
                 </label>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 flex items-center pl-4 font-bold text-foreground-secondary">
+                <div className="relative flex items-center">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-4 font-bold text-foreground-secondary pointer-events-none">
                     ₹
                   </span>
                   <input
@@ -138,13 +139,16 @@ export default function SetBudgetModal({
                     type="number"
                     value={limit}
                     onChange={(e) => setLimit(e.target.value)}
-                    className="input-base pl-9 w-full text-base font-extrabold tracking-tight"
+                    className="input-base pl-9 pr-12 w-full text-base font-extrabold tracking-tight"
                     placeholder="Enter limit threshold"
                     min="1"
                     step="1"
                     required
                     autoFocus
                   />
+                  <div className="absolute right-3 flex items-center">
+                    <CalculatorPopover value={limit} onChange={setLimit} title="Limit Calc" />
+                  </div>
                 </div>
               </div>
 

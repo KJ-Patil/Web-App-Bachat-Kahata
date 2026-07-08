@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { X, CreditCard, CheckCircle2, Info } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
+import CalculatorPopover from "@/components/inputs/CalculatorPopover";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -220,20 +221,23 @@ export default function AddLoanModal({
                   <label className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">
                     Loan Amount
                   </label>
-                  <div className="relative">
-                    <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 font-bold text-foreground-secondary">
+                  <div className="relative flex items-center">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 font-bold text-foreground-secondary pointer-events-none">
                       ₹
                     </span>
                     <input
                       type="number"
                       value={principal}
                       onChange={(e) => setPrincipal(e.target.value)}
-                      className="input-base pl-7 w-full font-bold"
+                      className="input-base pl-7 pr-12 w-full font-bold"
                       placeholder="500000"
                       min="1"
                       step="1"
                       required
                     />
+                    <div className="absolute right-3 flex items-center">
+                      <CalculatorPopover value={principal} onChange={setPrincipal} title="Loan Principal Calc" />
+                    </div>
                   </div>
                 </div>
 

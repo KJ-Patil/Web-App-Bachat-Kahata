@@ -21,6 +21,7 @@ import {
 import { formatAmount } from "@/core/utils/currencyManager";
 import { validatePhone, toFullNumber, getCountryByCurrency } from "@/core/utils/countries";
 import PhoneNumberInput from "@/components/inputs/PhoneNumberInput";
+import CalculatorPopover from "@/components/inputs/CalculatorPopover";
 import {
   useLedgerCustomers,
   setLedgerCustomers,
@@ -594,14 +595,19 @@ export default function LedgerPage() {
                 <label className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">
                   Opening Balance ({activeCurrency})
                 </label>
-                <input
-                  type="number"
-                  value={initialBalance}
-                  onChange={(e) => setInitialBalance(e.target.value)}
-                  className="input-base w-full"
-                  placeholder="0"
-                  min="0"
-                />
+                <div className="relative flex items-center">
+                  <input
+                    type="number"
+                    value={initialBalance}
+                    onChange={(e) => setInitialBalance(e.target.value)}
+                    className="input-base pr-12 w-full"
+                    placeholder="0"
+                    min="0"
+                  />
+                  <div className="absolute right-3 flex items-center">
+                    <CalculatorPopover value={initialBalance} onChange={setInitialBalance} title="Balance Calc" />
+                  </div>
+                </div>
               </div>
 
               {/* Account Description / Notes */}

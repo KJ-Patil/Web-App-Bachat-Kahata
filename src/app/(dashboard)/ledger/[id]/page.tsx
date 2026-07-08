@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
 import { Customer, LedgerEntry } from "../page";
+import CalculatorPopover from "@/components/inputs/CalculatorPopover";
 import {
   getLedgerCustomers,
   setLedgerCustomers,
@@ -381,17 +382,22 @@ export default function CustomerLedgerPage({
               <label className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider">
                 Value Amount ({activeCurrency})
               </label>
-              <input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="input-base w-full text-sm font-bold"
-                placeholder="0.00"
-                min="0.01"
-                step="0.01"
-                required
-                autoFocus
-              />
+              <div className="relative flex items-center">
+                <input
+                  type="number"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="input-base pr-12 w-full text-sm font-bold"
+                  placeholder="0.00"
+                  min="0.01"
+                  step="0.01"
+                  required
+                  autoFocus
+                />
+                <div className="absolute right-3 flex items-center">
+                  <CalculatorPopover value={amount} onChange={setAmount} title="Amount Calc" />
+                </div>
+              </div>
             </div>
 
             <div className="space-y-1.5">

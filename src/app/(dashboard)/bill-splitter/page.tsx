@@ -4,6 +4,7 @@ import React, { useState, useMemo } from "react";
 import { Receipt, Plus, Users, ArrowRight, MessageCircle, X, UserCheck, ArrowDownLeft, ArrowUpRight, Scale, Phone, User } from "lucide-react";
 import { simplifyDebts, calculateBalances, ExpenseEntry, Settlement, BalanceRecord } from "@/core/math/DebtSimplifier";
 import { formatAmount } from "@/core/utils/currencyManager";
+import CalculatorPopover from "@/components/inputs/CalculatorPopover";
 
 export default function BillSplitterPage() {
   const [expenses, setExpenses] = useState<ExpenseEntry[]>([]);
@@ -162,18 +163,21 @@ export default function BillSplitterPage() {
                 </div>
 
                 {/* Big amount input */}
-                <div className="flex items-center justify-center gap-2 pt-1">
+                <div className="flex items-center justify-center gap-2 pt-1 relative">
                   <span className="text-3xl font-black text-foreground-muted">₹</span>
                   <input
                     type="number"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder="0.00"
-                    className="w-44 bg-transparent border-0 focus:ring-0 outline-none text-center text-4xl font-black text-foreground placeholder:text-foreground-muted/40 tabular-nums"
+                    className="w-44 bg-transparent border-0 focus:ring-0 outline-none text-center text-4xl font-black text-foreground placeholder:text-foreground-muted/40 tabular-nums pr-8"
                     min="0.01"
                     step="0.01"
                     required
                   />
+                  <div className="absolute right-4 flex items-center">
+                    <CalculatorPopover value={amount} onChange={setAmount} title="Expense Calc" />
+                  </div>
                 </div>
               </div>
 

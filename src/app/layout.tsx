@@ -4,6 +4,7 @@ import { Toaster } from 'sonner';
 import { Providers } from '@/components/providers/providers';
 import NextTopLoader from 'nextjs-toploader';
 import '@/app/globals.css';
+import GlobalFloatingCalculator from '@/components/inputs/GlobalFloatingCalculator';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -37,7 +38,10 @@ export default function RootLayout({
           zIndex={9999}
           speed={200}
         />
-        <Providers>{children}</Providers>
+        <Providers>
+          {children}
+          <GlobalFloatingCalculator />
+        </Providers>
         <Toaster richColors position="top-right" closeButton duration={4000} expand={false} />
       </body>
     </html>
