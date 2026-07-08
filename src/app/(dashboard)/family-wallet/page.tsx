@@ -89,8 +89,11 @@ export default function FamilyWalletPage() {
       if (snap.exists()) {
         const data = snap.data();
         const myName = getMyName();
+        const myUid = auth.currentUser?.uid;
         const names = Array.isArray(data.memberNames) ? (data.memberNames as string[]) : [];
+        const uids = Array.isArray(data.memberUids) ? (data.memberUids as string[]) : [];
         const remaining = names.filter((n) => n !== myName);
+        const remainingUids = uids.filter((u) => u !== myUid);
         const remainingCount = names.length > 0
           ? remaining.length
           : Math.max(0, (typeof data.members === "number" ? data.members : 1) - 1);
@@ -101,7 +104,11 @@ export default function FamilyWalletPage() {
           await Promise.all(expSnap.docs.map((d) => deleteDoc(d.ref)));
           await deleteDoc(ref);
         } else {
-          await updateDoc(ref, { memberNames: remaining, members: remainingCount });
+          await updateDoc(ref, {
+            memberNames: remaining,
+            memberUids: remainingUids,
+            members: remainingCount,
+          });
         }
       }
     } catch {
@@ -127,6 +134,14 @@ export default function FamilyWalletPage() {
     // Don't join a group already present in this device's list.
     if (groups.some((g) => g.code === inviteCode)) {
       setJoinError("You're already a member of this group.");
+      return;
+    }
+
+    // Membership is enforced by security rules on the user's real Firebase UID,
+    // so we must be signed in before touching the shared group directory.
+    const myUid = auth.currentUser?.uid;
+    if (!myUid) {
+      setJoinError("You must be signed in to join a group.");
       return;
     }
 
@@ -163,8 +178,10 @@ export default function FamilyWalletPage() {
 
       // Record the new member on the shared group, then add it locally.
       // arrayUnion keeps the roster authoritative and the count in sync.
+      // memberUids is the authoritative list the security rules check against.
       await updateDoc(ref, {
         memberNames: arrayUnion(myName),
+        memberUids: arrayUnion(myUid),
         members: memberNames.length,
       });
       setFamilyGroups([...groups, newGroup]);
@@ -182,6 +199,14 @@ export default function FamilyWalletPage() {
     e.preventDefault();
     if (!newGroupName.trim() || isCreating) return;
 
+    // Must be signed in: the creator's UID seeds the members list that the
+    // security rules use to gate every later read/write of this group.
+    const myUid = auth.currentUser?.uid;
+    if (!myUid) {
+      setCreateError("You must be signed in to create a group.");
+      return;
+    }
+
     setIsCreating(true);
     setCreateError("");
     try {
@@ -193,8 +218,9 @@ export default function FamilyWalletPage() {
         code,
         members: 1,
         memberNames: [myName],
+        memberUids: [myUid],
         totalBalance: 0,
-        createdBy: auth.currentUser?.uid ?? null,
+        createdBy: myUid,
         createdAt: serverTimestamp(),
       });
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { auth, db } from "@/config/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, onSnapshot, setDoc, collection, getDocs, deleteDoc, query, orderBy, getDoc } from "firebase/firestore";
+import { deriveKeyFromPin, encryptValue, decryptValue, isEncrypted } from "./encryption";
 
 /**
  * Central data layer — the single source of truth for the app.
@@ -123,6 +124,30 @@ export const KEYS = {
 const STORE_EVENT = "datastore:change";
 
 /**
+ * Financial/PII keys that are encrypted at rest in localStorage and synced to
+ * the cloud. Reads/writes for these go through the in-memory `memCache` (below)
+ * so callers stay synchronous while the on-disk copy is always ciphertext.
+ */
+const SENSITIVE_KEYS: string[] = [
+  KEYS.transactions,
+  KEYS.budgets,
+  KEYS.savingsGoals,
+  KEYS.loans,
+  KEYS.ledgerCustomers,
+  KEYS.familyGroups,
+  KEYS.familyExpenses,
+  KEYS.manualSubscriptions,
+];
+
+/**
+ * The PIN-derived AES key (in memory only, set by unlockDataStore) and the
+ * decrypted working copy of every sensitive key. localStorage holds only the
+ * encrypted blobs; the app reads/writes plaintext here, synchronously.
+ */
+let aesKey: CryptoKey | null = null;
+const memCache = new Map<string, unknown>();
+
+/**
  * Keys that hold financial/ledger data (as opposed to auth, preferences, or
  * category config). Used when resetting the app's data without logging out.
  */
@@ -173,9 +198,32 @@ export function clearFinancialData(): void {
   emitChange();
 }
 
+/**
+ * Purge the LOCAL cache of financial data on sign-out — WITHOUT touching the
+ * user's cloud copy. Unlike clearFinancialData (which writes empty defaults and
+ * so wipes Firestore too), this removes localStorage keys directly, so the next
+ * person on a shared device sees nothing, while the signed-out user's cloud data
+ * is preserved and re-synced on their next login.
+ */
+export function clearLocalCache(): void {
+  if (typeof window === "undefined") return;
+
+  FINANCIAL_KEYS.forEach((key) => localStorage.removeItem(key));
+  localStorage.removeItem("user_session");
+  // Forget the decrypted cache + key so nothing sensitive lingers in memory.
+  lockDataStore();
+
+  emitChange();
+}
+
 // ──────────────── LOW-LEVEL HELPERS ────────────────
 function readJSON<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
+  // Sensitive keys are served from the decrypted in-memory cache (populated at
+  // unlock). Until unlocked, they read as the empty fallback.
+  if (SENSITIVE_KEYS.includes(key)) {
+    return memCache.has(key) ? (memCache.get(key) as T) : fallback;
+  }
   try {
     const raw = localStorage.getItem(key);
     return raw ? (JSON.parse(raw) as T) : fallback;
@@ -186,9 +234,28 @@ function readJSON<T>(key: string, fallback: T): T {
 
 function writeJSON(key: string, value: unknown): void {
   if (typeof window === "undefined") return;
+  if (SENSITIVE_KEYS.includes(key)) {
+    // Plaintext to memory (synchronous), ciphertext to disk (async), plaintext
+    // to the cloud (auth-protected). Never write plaintext to localStorage.
+    memCache.set(key, value);
+    void persistEncrypted(key, value);
+    pushToFirestore(key, value);
+    emitChange();
+    return;
+  }
   localStorage.setItem(key, JSON.stringify(value));
   pushToFirestore(key, value);
   emitChange();
+}
+
+/** Encrypt a sensitive value and write the ciphertext to localStorage. */
+async function persistEncrypted(key: string, value: unknown): Promise<void> {
+  if (!aesKey) return; // locked — memCache holds it; unlock will persist it
+  try {
+    localStorage.setItem(key, await encryptValue(aesKey, value));
+  } catch {
+    /* storage full / transient — memCache + cloud remain the source of truth */
+  }
 }
 
 /** Notify all subscribers in the current tab that stored data changed. */
@@ -213,17 +280,13 @@ export function generateId(): string {
  * far under the free Spark plan's 20k writes / 50k reads daily quota.
  */
 
-/** Keys that are synced to the cloud (financial/ledger data, not auth/prefs). */
-const SYNCED_KEYS: string[] = [
-  KEYS.transactions,
-  KEYS.budgets,
-  KEYS.savingsGoals,
-  KEYS.loans,
-  KEYS.ledgerCustomers,
-  KEYS.familyGroups,
-  KEYS.familyExpenses,
-  KEYS.manualSubscriptions,
-];
+/**
+ * Keys synced to the cloud — the same set that is encrypted locally. The cloud
+ * copy is plaintext (protected by Firebase Auth + rules) and acts as the
+ * recovery source if the local ciphertext can't be decrypted (e.g. after a PIN
+ * reset).
+ */
+const SYNCED_KEYS: string[] = SENSITIVE_KEYS;
 
 let currentUid: string | null = null;
 const detachers: Array<() => void> = [];
@@ -251,18 +314,21 @@ function isEmptyValue(value: unknown): boolean {
   return false;
 }
 
-/** Write a value that arrived from Firestore into the local cache. */
+/** Write a value that arrived from Firestore into the decrypted memory cache
+ *  (synchronous reads) and, encrypted, to localStorage (at rest). */
 function applyRemote(key: string, value: unknown): void {
   applyingRemote.add(key);
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    memCache.set(key, value);
+    void persistEncrypted(key, value);
   } finally {
     applyingRemote.delete(key);
   }
   emitChange();
 }
 
-/** Subscribe to every synced key for the given user. */
+/** Subscribe to every synced key for the given user. Requires the store to be
+ *  unlocked first so the decrypted cache (`memCache`) reflects on-disk data. */
 function startSync(uid: string): void {
   currentUid = uid;
   for (const key of SYNCED_KEYS) {
@@ -271,9 +337,9 @@ function startSync(uid: string): void {
       onSnapshot(ref, (snap) => {
         if (!snap.exists()) {
           // No cloud copy yet — seed it from whatever is already local.
-          const local = localStorage.getItem(key);
-          if (local) {
-            void setDoc(ref, { value: JSON.parse(local) }).catch(() => {});
+          const local = memCache.get(key);
+          if (local != null && !isEmptyValue(local)) {
+            void setDoc(ref, { value: local }).catch(() => {});
           }
           return;
         }
@@ -286,9 +352,9 @@ function startSync(uid: string): void {
         // budget on the next snapshot. When the cloud is empty but local has
         // data, push local up to reconcile instead of wiping it.
         if (isEmptyValue(remote)) {
-          const local = localStorage.getItem(key);
-          if (local && !isEmptyValue(JSON.parse(local))) {
-            void setDoc(ref, { value: JSON.parse(local) }).catch(() => {});
+          const local = memCache.get(key);
+          if (local != null && !isEmptyValue(local)) {
+            void setDoc(ref, { value: local }).catch(() => {});
             return;
           }
         }
@@ -305,13 +371,71 @@ function stopSync(): void {
   currentUid = null;
 }
 
-// Start/stop cloud sync as the user signs in and out. Runs once per client
-// (this module is a singleton); no-ops during SSR.
+// Track the signed-in user, but DON'T start cloud sync here: sync (and reading
+// the encrypted local data) requires the PIN-derived key, which only exists
+// after unlockDataStore runs on the lock screen. Sign-out locks the store.
 if (typeof window !== "undefined") {
   onAuthStateChanged(auth, (user) => {
-    stopSync();
-    if (user) startSync(user.uid);
+    if (user) {
+      currentUid = user.uid;
+      // If the user unlocked before auth resolved, sync couldn't start then —
+      // start it now that we have the uid.
+      if (aesKey) {
+        stopSync();
+        startSync(user.uid);
+      }
+    } else {
+      currentUid = null;
+      lockDataStore();
+    }
   });
+}
+
+/**
+ * Unlock the encrypted local store with the user's PIN. Derives the AES key,
+ * loads (and migrates any legacy plaintext) into the in-memory cache, then
+ * starts cloud sync. Called by the lock screen after a successful PIN
+ * setup/verify/change. Safe to call again (re-derives + re-syncs).
+ */
+export async function unlockDataStore(pin: string): Promise<void> {
+  if (typeof window === "undefined") return;
+  aesKey = await deriveKeyFromPin(pin);
+
+  for (const key of SENSITIVE_KEYS) {
+    const raw = localStorage.getItem(key);
+    if (raw == null) continue;
+    try {
+      if (isEncrypted(raw)) {
+        memCache.set(key, await decryptValue(aesKey, raw));
+      } else {
+        // Legacy plaintext from before encryption existed — adopt it, then
+        // rewrite it as ciphertext now that we hold the key.
+        const value = JSON.parse(raw);
+        memCache.set(key, value);
+        localStorage.setItem(key, await encryptValue(aesKey, value));
+      }
+    } catch {
+      // Wrong key or corrupt blob (e.g. after a PIN reset). Drop the local copy;
+      // the plaintext cloud copy will repopulate it via startSync below.
+      memCache.delete(key);
+      localStorage.removeItem(key);
+    }
+  }
+
+  emitChange();
+
+  if (currentUid) {
+    stopSync();
+    startSync(currentUid);
+  }
+}
+
+/** Lock the store: forget the key and the decrypted cache, stop cloud sync.
+ *  On-disk data stays encrypted. Called on sign-out. */
+export function lockDataStore(): void {
+  aesKey = null;
+  memCache.clear();
+  stopSync();
 }
 
 // ──────────────── TRANSACTIONS ────────────────
@@ -758,8 +882,10 @@ export async function createCloudBackup(label?: string): Promise<string> {
   
   const backupData: Record<string, unknown> = {};
   for (const key of SYNCED_KEYS) {
-    const localVal = localStorage.getItem(key);
-    backupData[key] = localVal ? JSON.parse(localVal) : (key === KEYS.budgets ? {} : []);
+    // Read the decrypted value from the in-memory cache (localStorage holds
+    // ciphertext). The backup doc, like appData, is plaintext in the cloud.
+    const val = memCache.get(key);
+    backupData[key] = val !== undefined ? val : (key === KEYS.budgets ? {} : []);
   }
   
   const backupRecord = {
@@ -823,12 +949,12 @@ export async function restoreCloudBackup(backupId: string): Promise<void> {
   const backup = backupSnap.data() as BackupRecord;
   const backupData = backup.data || {};
   
-  // Overwrite local storage and active Firestore docs
+  // Overwrite the decrypted cache + encrypted localStorage + cloud. writeJSON
+  // handles all three (memCache, ciphertext to disk, plaintext to Firestore).
   for (const key of SYNCED_KEYS) {
     const val = backupData[key] !== undefined ? backupData[key] : (key === KEYS.budgets ? {} : []);
-    localStorage.setItem(key, JSON.stringify(val));
-    await setDoc(doc(db, "users", currentUid, "appData", key), { value: val });
+    writeJSON(key, val);
   }
-  
+
   emitChange();
 }

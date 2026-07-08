@@ -3,8 +3,7 @@ import { getAuth } from "firebase/auth";
 import {
   initializeFirestore,
   getFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
+  memoryLocalCache,
   Firestore,
 } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
@@ -30,9 +29,10 @@ let db: Firestore;
 
 if (typeof window !== "undefined") {
   db = initializeFirestore(app, {
-    localCache: persistentLocalCache({
-      tabManager: persistentMultipleTabManager(),
-    }),
+    // In-memory cache only: Firestore must NOT persist a plaintext copy of the
+    // user's financial data to IndexedDB on disk. The app's own localStorage is
+    // the offline cache, and it is encrypted at rest (see core/store/encryption).
+    localCache: memoryLocalCache(),
     // Silently drop `undefined` fields instead of throwing on setDoc/updateDoc,
     // so optional fields left unset (e.g. a customer's description) don't crash writes.
     ignoreUndefinedProperties: true,

@@ -5,7 +5,9 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { Home, Settings, LogOut, Plus, Globe, List, BookOpen, BarChart3, Download, CreditCard, Mic, Users, Activity, SlidersHorizontal, Receipt, BrainCircuit, GraduationCap, Target, PiggyBank, Sparkles, Flame, Repeat, ArrowLeftRight, CalendarDays } from "lucide-react";
 import { useLazyCatchUpSync } from "@/core/store/CatchUpSync";
-import { clearFinancialData } from "@/core/store/dataStore";
+import { clearFinancialData, clearLocalCache } from "@/core/store/dataStore";
+import { auth } from "@/config/firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import AddTransactionModal from "@/components/modals/AddTransactionModal";
 import CurrencyPickerSheet from "@/components/modals/CurrencyPickerSheet";
 import VoiceLoggingModal from "@/components/voice/VoiceLoggingModal";
@@ -49,6 +51,28 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const { t } = useTranslation();
+
+  // ─── Auth guard ───────────────────────────────────────────────────────────
+  // The dashboard must only render for a genuinely signed-in Firebase user.
+  // We trust Firebase's own session (onAuthStateChanged), NOT a localStorage
+  // flag — a localStorage value can be forged in devtools, a real session can't.
+  // `authChecked` stays false until Firebase resolves the restored session, so
+  // we show a spinner instead of flashing the app or a wrong redirect.
+  const [authChecked, setAuthChecked] = useState(false);
+  const [isAuthed, setIsAuthed] = useState(false);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setIsAuthed(true);
+      } else {
+        setIsAuthed(false);
+        router.replace("/login");
+      }
+      setAuthChecked(true);
+    });
+    return unsub;
+  }, [router]);
 
   // One-time purge of legacy seeded/demo data (the old fabricated balances).
   // Runs exactly once per device, then never touches real data the user adds.
@@ -106,9 +130,18 @@ export default function DashboardLayout({
     };
   }, [router]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("user_session");
-    router.push("/login");
+  const handleLogout = async () => {
+    // End the REAL Firebase session (not just a localStorage key), then purge
+    // the local cache so leftover financial data can't be read by the next
+    // person on a shared device. The cloud copy is preserved and re-synced on
+    // the user's next login.
+    try {
+      await signOut(auth);
+    } catch {
+      /* even if signOut fails (offline), still clear locally and leave */
+    }
+    clearLocalCache();
+    router.replace("/login");
   };
 
   const handleCurrencySelect = (code: string) => {
@@ -116,6 +149,18 @@ export default function DashboardLayout({
     // Reload active route to re-format values
     window.location.reload();
   };
+
+  // Until Firebase confirms the session, show a spinner rather than flashing the
+  // dashboard. If the user isn't authenticated, render nothing while the
+  // redirect to /login (fired in the effect above) takes effect.
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background-subtle">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+  if (!isAuthed) return null;
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-background-subtle">

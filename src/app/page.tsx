@@ -19,17 +19,15 @@ export default function SplashPage() {
     // Delay routing slightly to show the beautiful branded load layout
     const timer = setTimeout(() => {
       const session = localStorage.getItem("user_session");
-      const pinHash = localStorage.getItem("pin_hash");
 
       if (!session) {
         // Redirect to login if session missing
         router.push("/login");
-      } else if (pinHash) {
-        // Security PIN set up, route to validation view
-        router.push("/pin-lock");
       } else {
-        // Valid session and no lock configured, route directly to dashboard
-        router.push("/home");
+        // Valid session → always through the lock screen. It sets up a PIN if
+        // none exists (the PIN also derives the key that decrypts local data)
+        // or verifies the existing one before unlocking the dashboard.
+        router.push("/pin-lock");
       }
     }, 1500);
 

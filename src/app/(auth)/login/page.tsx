@@ -47,8 +47,10 @@ export default function LoginPage() {
 
   const finishSignIn = (session: { email: string | null; name: string }) => {
     localStorage.setItem("user_session", JSON.stringify(session));
-    const pinHash = localStorage.getItem("pin_hash");
-    router.push(pinHash ? "/pin-lock" : "/home");
+    // Always go through the lock screen: it sets up a PIN if none exists (the
+    // PIN also derives the key that decrypts local financial data) or verifies
+    // the existing one.
+    router.push("/pin-lock");
   };
 
   const handleSendOtp = async (e: React.FormEvent) => {
@@ -158,12 +160,9 @@ export default function LoginPage() {
         JSON.stringify({ email, name: email.split("@")[0] })
       );
 
-      const pinHash = localStorage.getItem("pin_hash");
-      if (pinHash) {
-        router.push("/pin-lock");
-      } else {
-        router.push("/home");
-      }
+      // Always route through the lock screen (PIN setup or verify) — the PIN
+      // derives the key that decrypts local financial data.
+      router.push("/pin-lock");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : t('login.loginFailed');
       setError(message);
@@ -196,12 +195,9 @@ export default function LoginPage() {
         })
       );
 
-      const pinHash = localStorage.getItem("pin_hash");
-      if (pinHash) {
-        router.push("/pin-lock");
-      } else {
-        router.push("/home");
-      }
+      // Always route through the lock screen (PIN setup or verify) — the PIN
+      // derives the key that decrypts local financial data.
+      router.push("/pin-lock");
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : t('login.googleFailed');
@@ -212,11 +208,11 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex flex-1 flex-col items-center justify-center px-4 pt-24 pb-12 bg-background-subtle">
-      <div className="w-full max-w-md space-y-8">
+    <main className="flex flex-1 flex-col items-center justify-center px-4 py-6 bg-background-subtle">
+      <div className="w-full max-w-md space-y-5">
         {/* Header */}
-        <div className="text-center space-y-2">
-          <h2 className="text-3xl font-extrabold tracking-tight text-foreground">
+        <div className="text-center space-y-1">
+          <h2 className="text-2xl font-extrabold tracking-tight text-foreground">
             {t('login.welcomeBack')}
           </h2>
           <p className="text-sm font-medium text-foreground-muted">
@@ -225,7 +221,7 @@ export default function LoginPage() {
         </div>
 
         {/* Card Container */}
-        <div className="bg-card border border-border rounded-2xl shadow-sm p-8 space-y-6">
+        <div className="bg-card border border-border rounded-2xl shadow-sm p-6 space-y-4">
           {error && (
             <div className="p-3 text-sm rounded-lg bg-error-light text-error font-medium">
               {error}

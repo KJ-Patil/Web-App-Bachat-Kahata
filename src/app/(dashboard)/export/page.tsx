@@ -26,6 +26,7 @@ import {
 import { generatePdfReport, type PdfTransaction, type PdfBudget, type PdfSavingsGoal } from "@/core/utils/pdfGenerator";
 import { exportWorkbookXlsx } from "@/core/utils/excelExporter";
 import { getCurrencySymbol } from "@/core/utils/currencyManager";
+import { getTransactions, getBudgets, getSavingsGoals } from "@/core/store/dataStore";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -135,20 +136,11 @@ export default function ExportPage() {
     const cur = localStorage.getItem("active_currency");
     if (cur) setCurrencyCode(cur);
 
-    const storedTxs = localStorage.getItem("transactions");
-    if (storedTxs) {
-      try { setRawTransactions(JSON.parse(storedTxs)); } catch { /* ignore */ }
-    }
-
-    const storedBudgets = localStorage.getItem("budgets");
-    if (storedBudgets) {
-      try { setRawBudgets(JSON.parse(storedBudgets)); } catch { /* ignore */ }
-    }
-
-    const storedGoals = localStorage.getItem("savings_goals");
-    if (storedGoals) {
-      try { setRawGoals(JSON.parse(storedGoals)); } catch { /* ignore */ }
-    }
+    // Read the decrypted values from the data store (localStorage holds
+    // ciphertext for these keys; the store serves the in-memory plaintext).
+    setRawTransactions(getTransactions());
+    setRawBudgets(getBudgets());
+    setRawGoals(getSavingsGoals());
   }, []);
 
   // ── Filtered record counts ─────────────────────────────────────────────────

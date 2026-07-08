@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { User, Lock, Globe, Languages, Fingerprint, Trash2, ArrowRight, ShieldAlert, LogOut, CheckCircle2, Layers, Info, HelpCircle, Database, CloudUpload, Clock, RotateCcw, RefreshCw } from "lucide-react";
+import { User, Lock, Globe, Languages, Trash2, ArrowRight, ShieldAlert, LogOut, CheckCircle2, Layers, Info, HelpCircle, Database, CloudUpload, Clock, RotateCcw, RefreshCw } from "lucide-react";
 import CurrencyPickerSheet from "@/components/modals/CurrencyPickerSheet";
 import LanguagePickerSheet from "@/components/modals/LanguagePickerSheet";
 import { auth } from "@/config/firebase";
@@ -31,7 +31,6 @@ export default function SettingsPage() {
   const [isCurrencySheetOpen, setIsCurrencySheetOpen] = useState(false);
   const [activeLanguage, setActiveLanguage] = useState("en");
   const [isLanguageSheetOpen, setIsLanguageSheetOpen] = useState(false);
-  const [biometricsEnabled, setBiometricsEnabled] = useState(false);
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
   // Stages: 0 = confirm, 1 = final confirm, 2 = done, 3 = email verification
   const [clearStage, setClearStage] = useState<0 | 1 | 2 | 3>(0);
@@ -169,9 +168,6 @@ export default function SettingsPage() {
       const lang = localStorage.getItem("active_language");
       if (lang) setActiveLanguage(lang);
 
-      const bio = localStorage.getItem("biometrics_enabled");
-      if (bio === "true") setBiometricsEnabled(true);
-
       // Load the real signed-in profile from the session
       const session = localStorage.getItem("user_session");
       if (session) {
@@ -197,10 +193,13 @@ export default function SettingsPage() {
     setIsLanguageSheetOpen(false);
   };
 
-  const toggleBiometrics = () => {
-    const newState = !biometricsEnabled;
-    setBiometricsEnabled(newState);
-    localStorage.setItem("biometrics_enabled", String(newState));
+  // Reset the local app PIN: open the lock screen in "change" mode, which asks
+  // for the current PIN before letting the user set a new one (Old → New →
+  // Confirm). If no PIN exists yet, the lock screen falls back to first-time
+  // setup. The PIN is device-local (localStorage), so this never touches
+  // Firebase or the user's cloud data.
+  const resetPin = () => {
+    window.location.href = "/pin-lock?action=change";
   };
 
   // Actually wipe the data and show the success stage
@@ -300,7 +299,7 @@ export default function SettingsPage() {
           </span>
         </div>
         <div className="flex flex-col gap-3 w-full sm:w-auto">
-          <button className="btn-secondary text-xs flex items-center justify-center gap-2">
+          <button onClick={resetPin} className="btn-secondary text-xs flex items-center justify-center gap-2">
             <Lock className="w-4 h-4" />
             {t('settings.resetPin')}
           </button>
@@ -411,26 +410,6 @@ export default function SettingsPage() {
           </h3>
           <div className="bg-card border border-border-strong rounded-2xl overflow-hidden shadow-sm">
             
-            <div className="w-full flex items-center justify-between p-4 border-b border-border text-left">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center text-icon-default">
-                  <Fingerprint className="w-5 h-5" />
-                </div>
-                <div>
-                  <span className="font-bold text-sm text-foreground block">{t('settings.biometricLogin')}</span>
-                  <span className="text-[10px] font-semibold text-foreground-muted block">{t('settings.webAuthnSupport')}</span>
-                </div>
-              </div>
-              
-              {/* Toggle Switch */}
-              <button 
-                onClick={toggleBiometrics}
-                className={`w-12 h-6 rounded-full relative transition-colors ${biometricsEnabled ? 'bg-primary' : 'bg-border'}`}
-              >
-                <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-all ${biometricsEnabled ? 'left-7' : 'left-1'}`} />
-              </button>
-            </div>
-
             <button className="w-full flex items-center justify-between p-4 hover:bg-secondary transition-colors text-left group">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center text-icon-default group-hover:text-error transition-colors">
