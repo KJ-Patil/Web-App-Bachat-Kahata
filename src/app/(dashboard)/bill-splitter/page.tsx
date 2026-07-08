@@ -4,7 +4,8 @@ import React, { useState, useMemo } from "react";
 import { Receipt, Plus, Users, ArrowRight, MessageCircle, X, UserCheck, ArrowDownLeft, ArrowUpRight, Scale, Phone, User } from "lucide-react";
 import { simplifyDebts, calculateBalances, ExpenseEntry, Settlement, BalanceRecord } from "@/core/math/DebtSimplifier";
 import { formatAmount } from "@/core/utils/currencyManager";
-import CalculatorPopover from "@/components/inputs/CalculatorPopover";
+import { getLedgerCustomers } from "@/core/store/dataStore";
+import FlashReminderModal from "@/components/modals/FlashReminderModal";
 
 export default function BillSplitterPage() {
   const [expenses, setExpenses] = useState<ExpenseEntry[]>([]);
@@ -12,8 +13,19 @@ export default function BillSplitterPage() {
   const [balances, setBalances] = useState<BalanceRecord[]>([]);
 
   // Mobile numbers per person (name -> phone), and who "you" are
-  const [contacts, setContacts] = useState<Record<string, string>>({});
+  const [contacts, setContacts] = useState<Record<string, string>>(() => {
+    if (typeof window === "undefined") return {};
+    const ledger = getLedgerCustomers();
+    const initial: Record<string, string> = {};
+    ledger.forEach((c) => {
+      if (c.phone) {
+        initial[c.name] = c.phone;
+      }
+    });
+    return initial;
+  });
   const [youName, setYouName] = useState("");
+  const [activeReminder, setActiveReminder] = useState<{ recipientName: string; balance: number; phone: string } | null>(null);
 
   // Form State
   const [splitMode, setSplitMode] = useState<"equal" | "individual">("equal");
@@ -95,6 +107,13 @@ export default function BillSplitterPage() {
   const setContact = (person: string, phone: string) =>
     setContacts((prev) => ({ ...prev, [person]: phone }));
 
+  // Automatically lookup ledger contacts if names match (ledger is checked on state init and can be updated dynamic, or typed)
+
+  const handleOpenReminder = (recipientName: string, balance: number) => {
+    const phone = contacts[recipientName] || "";
+    setActiveReminder({ recipientName, balance, phone });
+  };
+
   // Split the net balances into people who get money back, who owe, and who are square.
   const takeBack = balances.filter((b) => b.balance > 0);
   const toGive = balances.filter((b) => b.balance < 0);
@@ -170,14 +189,11 @@ export default function BillSplitterPage() {
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder="0.00"
-                    className="w-44 bg-transparent border-0 focus:ring-0 outline-none text-center text-4xl font-black text-foreground placeholder:text-foreground-muted/40 tabular-nums pr-8"
+                    className="w-44 bg-transparent border-0 focus:ring-0 outline-none text-center text-4xl font-black text-foreground placeholder:text-foreground-muted/40 tabular-nums pr-0"
                     min="0.01"
                     step="0.01"
                     required
                   />
-                  <div className="absolute right-4 flex items-center">
-                    <CalculatorPopover value={amount} onChange={setAmount} title="Expense Calc" />
-                  </div>
                 </div>
               </div>
 
@@ -407,15 +423,13 @@ export default function BillSplitterPage() {
                       <span className="text-base font-black text-foreground">
                         {formatAmount(settlement.amount, "INR")}
                       </span>
-                      <a
-                        href={getWhatsAppLink(settlement)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-8 h-8 rounded-full bg-success-light text-success flex items-center justify-center hover:bg-success hover:text-white transition-colors"
-                        title="Request via WhatsApp"
+                      <button
+                        onClick={() => handleOpenReminder(settlement.from, settlement.amount)}
+                        className="w-8 h-8 rounded-full bg-success-light text-success flex items-center justify-center hover:bg-success hover:text-white transition-colors cursor-pointer"
+                        title="Send SMS/WhatsApp Reminder"
                       >
                         <MessageCircle className="w-4 h-4" />
-                      </a>
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -461,15 +475,13 @@ export default function BillSplitterPage() {
                       <span className="font-black text-success text-sm">
                         + {formatAmount(s.amount, "INR")}
                       </span>
-                      <a
-                        href={getWhatsAppLink(s)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-7 h-7 rounded-full bg-success text-white flex items-center justify-center hover:opacity-90 transition-opacity"
-                        title="Remind via WhatsApp"
+                      <button
+                        onClick={() => handleOpenReminder(s.from, s.amount)}
+                        className="w-7 h-7 rounded-full bg-success text-white flex items-center justify-center hover:opacity-90 transition-opacity cursor-pointer"
+                        title="Send SMS/WhatsApp Reminder"
                       >
                         <MessageCircle className="w-3.5 h-3.5" />
-                      </a>
+                      </button>
                     </div>
                   </div>
                 ))
@@ -583,6 +595,22 @@ export default function BillSplitterPage() {
             </p>
           )}
         </div>
+      )}
+      {activeReminder && (
+        <FlashReminderModal
+          isOpen={true}
+          onClose={() => setActiveReminder(null)}
+          recipientName={activeReminder.recipientName}
+          recipientPhone={activeReminder.phone}
+          balance={activeReminder.balance}
+          relation="settlement"
+          onSendSuccess={() => {
+            // Keep phone synced if modified in the modal
+            if (activeReminder) {
+              // Note: activeReminder.phone can be updated, let's keep it clean
+            }
+          }}
+        />
       )}
     </div>
   );

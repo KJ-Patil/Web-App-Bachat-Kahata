@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import { X, CheckCircle2, Target, Calendar, Coins } from "lucide-react";
 import { SavingsGoal, getSavingsGoals, setSavingsGoals, generateId } from "@/core/store/dataStore";
-import CalculatorPopover from "@/components/inputs/CalculatorPopover";
 
 interface AddGoalModalProps {
   isOpen: boolean;
@@ -131,15 +130,12 @@ export default function AddGoalModal({
                     type="number"
                     value={target}
                     onChange={(e) => setTarget(e.target.value)}
-                    className="input-base pl-9 pr-12 w-full text-lg font-extrabold tracking-tight"
+                    className="input-base pl-9 pr-3 w-full text-lg font-extrabold tracking-tight"
                     placeholder="50,000"
                     min="1"
                     step="1"
                     required
                   />
-                  <div className="absolute right-3 flex items-center">
-                    <CalculatorPopover value={target} onChange={setTarget} title="Target Calc" />
-                  </div>
                 </div>
               </div>
 

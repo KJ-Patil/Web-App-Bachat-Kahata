@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import { X, Check, Save } from "lucide-react";
 import { getBudgets, setBudgets } from "@/core/store/dataStore";
 import { getActiveCategories } from "@/core/utils/categories";
-import CalculatorPopover from "@/components/inputs/CalculatorPopover";
 
 interface SetBudgetModalProps {
   isOpen: boolean;
@@ -26,14 +25,14 @@ export default function SetBudgetModal({
   useEffect(() => {
     if (isOpen) {
       const names = getActiveCategories("expense").map((c) => c.name);
-      setCategories(names);
-      setSuccess(false);
-
-      // Default to the first category and preload its current limit if set.
       const first = names[0] ?? "";
-      setCategory(first);
       const budgets = getBudgets();
-      setLimit(first && budgets[first] ? String(budgets[first]) : "");
+      setTimeout(() => {
+        setCategories(names);
+        setSuccess(false);
+        setCategory(first);
+        setLimit(first && budgets[first] ? String(budgets[first]) : "");
+      }, 0);
     }
   }, [isOpen]);
 
@@ -139,16 +138,13 @@ export default function SetBudgetModal({
                     type="number"
                     value={limit}
                     onChange={(e) => setLimit(e.target.value)}
-                    className="input-base pl-9 pr-12 w-full text-base font-extrabold tracking-tight"
+                    className="input-base pl-9 pr-3 w-full text-base font-extrabold tracking-tight"
                     placeholder="Enter limit threshold"
                     min="1"
                     step="1"
                     required
                     autoFocus
                   />
-                  <div className="absolute right-3 flex items-center">
-                    <CalculatorPopover value={limit} onChange={setLimit} title="Limit Calc" />
-                  </div>
                 </div>
               </div>
 

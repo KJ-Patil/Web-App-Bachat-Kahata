@@ -21,7 +21,6 @@ import {
 import { formatAmount } from "@/core/utils/currencyManager";
 import { validatePhone, toFullNumber, getCountryByCurrency } from "@/core/utils/countries";
 import PhoneNumberInput from "@/components/inputs/PhoneNumberInput";
-import CalculatorPopover from "@/components/inputs/CalculatorPopover";
 import {
   useLedgerCustomers,
   setLedgerCustomers,
@@ -30,6 +29,7 @@ import {
   type LedgerCustomer,
   type LedgerEntry as StoreLedgerEntry,
 } from "@/core/store/dataStore";
+import FlashReminderModal from "@/components/modals/FlashReminderModal";
 
 // Re-exported from the central data store so other ledger pages keep importing
 // `Customer` / `LedgerEntry` from here.
@@ -41,35 +41,28 @@ type FilterTab = "all" | "credit" | "debit" | "settled";
 export default function LedgerPage() {
   const customers = useLedgerCustomers();
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeCurrency, setActiveCurrency] = useState("INR");
+  const [activeCurrency, setActiveCurrency] = useState(() => {
+    if (typeof window === "undefined") return "INR";
+    return localStorage.getItem("active_currency") || "INR";
+  });
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
+  const [selectedReminderCustomer, setSelectedReminderCustomer] = useState<Customer | null>(null);
+  const [now] = useState(() => Date.now());
 
   // New account form fields
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState(""); // national number (no dial code)
-  const [newCountry, setNewCountry] = useState("IN"); // ISO-2; defaults from active currency
+  const [newCountry, setNewCountry] = useState(() => {
+    if (typeof window === "undefined") return "IN";
+    const cur = localStorage.getItem("active_currency") || "INR";
+    const match = getCountryByCurrency(cur);
+    return match ? match.iso2 : "IN";
+  });
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [newType, setNewType] = useState<"customer" | "supplier">("customer");
   const [initialBalance, setInitialBalance] = useState("");
   const [newDescription, setNewDescription] = useState("");
-
-  useEffect(() => {
-    loadLedgerData();
-  }, []);
-
-  const loadLedgerData = () => {
-    if (typeof window === "undefined") return;
-
-    const cur = localStorage.getItem("active_currency");
-    if (cur) {
-      setActiveCurrency(cur);
-      // Pre-select the country whose currency matches the app's active currency.
-      const match = getCountryByCurrency(cur);
-      if (match) setNewCountry(match.iso2);
-    }
-    // Customers are sourced reactively from the data store via useLedgerCustomers().
-  };
 
   const handleAddAccount = (e: React.FormEvent) => {
     e.preventDefault();
@@ -205,22 +198,11 @@ export default function LedgerPage() {
     },
   ];
 
-  const getWhatsAppLink = (c: Customer) => {
-    const absBal = Math.abs(c.balance);
-    const balanceStr = formatAmount(absBal, activeCurrency);
-    const message =
-      c.balance > 0
-        ? `Dear ${c.name}, a friendly reminder regarding your pending balance on Bachat Khata of ${balanceStr}. Please review and reconcile at your earliest convenience. Thank you!`
-        : `Dear ${c.name}, this is a payment reconciliation notice from Bachat Khata. Your pending supplier balance of ${balanceStr} is being processed. Thank you for your continued partnership!`;
-
-    return `https://wa.me/${c.phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(message)}`;
-  };
-
   const getLastActivityLabel = (c: Customer) => {
     if (c.history.length === 0) return "No activity";
     const last = c.history[0];
     const daysDiff = Math.floor(
-      (Date.now() - new Date(last.date).getTime()) / (1000 * 60 * 60 * 24)
+      (now - new Date(last.date).getTime()) / (1000 * 60 * 60 * 24)
     );
     if (daysDiff === 0) return "Today";
     if (daysDiff === 1) return "Yesterday";
@@ -480,17 +462,15 @@ export default function LedgerPage() {
                       </span>
                     </div>
 
-                    {/* Quick WhatsApp Reminder Trigger */}
+                    {/* Quick SMS/WhatsApp Reminder Trigger */}
                     {c.balance !== 0 && (
-                      <a
-                        href={getWhatsAppLink(c)}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => setSelectedReminderCustomer(c)}
                         className="p-2.5 rounded-xl border border-border bg-background hover:bg-success-light text-success hover:border-success transition-all cursor-pointer flex items-center justify-center"
-                        title="Send WhatsApp Balance Statement"
+                        title="Send SMS/WhatsApp Balance Statement"
                       >
                         <MessageSquare className="w-4 h-4" />
-                      </a>
+                      </button>
                     )}
 
                     {/* Chevron to detail */}
@@ -600,13 +580,10 @@ export default function LedgerPage() {
                     type="number"
                     value={initialBalance}
                     onChange={(e) => setInitialBalance(e.target.value)}
-                    className="input-base pr-12 w-full"
+                    className="input-base pr-3 w-full"
                     placeholder="0"
                     min="0"
                   />
-                  <div className="absolute right-3 flex items-center">
-                    <CalculatorPopover value={initialBalance} onChange={setInitialBalance} title="Balance Calc" />
-                  </div>
                 </div>
               </div>
 
@@ -641,6 +618,18 @@ export default function LedgerPage() {
             </form>
           </div>
         </div>
+      )}
+      {/* Flash message reminder dispatcher */}
+      {selectedReminderCustomer && (
+        <FlashReminderModal
+          isOpen={true}
+          onClose={() => setSelectedReminderCustomer(null)}
+          recipientName={selectedReminderCustomer.name}
+          recipientPhone={selectedReminderCustomer.phone}
+          balance={selectedReminderCustomer.balance}
+          relation={selectedReminderCustomer.balance > 0 ? "credit" : "debit"}
+          currency={activeCurrency}
+        />
       )}
     </div>
   );

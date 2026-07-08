@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from "react";
 import { X, Check, ArrowUpRight } from "lucide-react";
 import { addTransaction, getSavingsGoals, setSavingsGoals } from "@/core/store/dataStore";
-import CalculatorPopover from "@/components/inputs/CalculatorPopover";
 
 interface LogDepositModalProps {
   isOpen: boolean;
@@ -25,8 +24,10 @@ export default function LogDepositModal({
 
   useEffect(() => {
     if (isOpen) {
-      setAmount("");
-      setSuccess(false);
+      setTimeout(() => {
+        setAmount("");
+        setSuccess(false);
+      }, 0);
     }
   }, [isOpen]);
 
@@ -110,16 +111,13 @@ export default function LogDepositModal({
                     type="number"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="input-base pl-9 pr-12 w-full text-base font-extrabold tracking-tight"
+                    className="input-base pl-9 pr-3 w-full text-base font-extrabold tracking-tight"
                     placeholder="0.00"
                     min="1"
                     step="1"
                     required
                     autoFocus
                   />
-                  <div className="absolute right-3 flex items-center">
-                    <CalculatorPopover value={amount} onChange={setAmount} title="Deposit Calc" />
-                  </div>
                 </div>
               </div>
 

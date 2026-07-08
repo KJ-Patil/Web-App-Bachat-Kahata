@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { X, CreditCard, CheckCircle2, Info } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
-import CalculatorPopover from "@/components/inputs/CalculatorPopover";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -67,15 +66,17 @@ export default function AddLoanModal({
 
   useEffect(() => {
     if (isOpen) {
-      setName("");
-      setLender("HDFC Bank");
-      setCustomLender("");
-      setPrincipal("");
-      setRate("");
-      setTenure("");
-      setMonthsPaid("0");
-      setStartDate(new Date().toISOString().slice(0, 10));
-      setSuccess(false);
+      setTimeout(() => {
+        setName("");
+        setLender("HDFC Bank");
+        setCustomLender("");
+        setPrincipal("");
+        setRate("");
+        setTenure("");
+        setMonthsPaid("0");
+        setStartDate(new Date().toISOString().split("T")[0]);
+        setSuccess(false);
+      }, 0);
     }
   }, [isOpen]);
 
@@ -229,15 +230,12 @@ export default function AddLoanModal({
                       type="number"
                       value={principal}
                       onChange={(e) => setPrincipal(e.target.value)}
-                      className="input-base pl-7 pr-12 w-full font-bold"
+                      className="input-base pl-7 pr-3 w-full font-bold"
                       placeholder="500000"
                       min="1"
                       step="1"
                       required
                     />
-                    <div className="absolute right-3 flex items-center">
-                      <CalculatorPopover value={principal} onChange={setPrincipal} title="Loan Principal Calc" />
-                    </div>
                   </div>
                 </div>
 

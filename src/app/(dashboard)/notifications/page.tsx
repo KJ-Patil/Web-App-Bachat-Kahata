@@ -12,21 +12,44 @@ interface NotificationItem {
 }
 
 export default function NotificationsPage() {
-  const [notes, setNotes] = useState<NotificationItem[]>([]);
+  const [notes, setNotes] = useState<NotificationItem[]>(() => {
+    if (typeof window === "undefined") return [];
+    const stored = localStorage.getItem("notifications");
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === "string") {
+          return parsed.map((str: string, index: number) => {
+            let type: "success" | "alert" | "error" = "alert";
+            if (str.toLowerCase().includes("success") || str.toLowerCase().includes("info")) {
+              type = "success";
+            } else if (str.toLowerCase().includes("error") || str.toLowerCase().includes("breached")) {
+              type = "error";
+            }
+            return {
+              id: `stored-${index}`,
+              text: str,
+              type,
+              read: false,
+              date: new Date().toISOString(),
+            };
+          });
+        }
+        return parsed;
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
 
-  useEffect(() => {
-    loadNotifications();
-  }, []);
-
-  const loadNotifications = () => {
+  function loadNotifications() {
     if (typeof window === "undefined") return;
 
     const stored = localStorage.getItem("notifications");
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
-        
-        // If stored data contains simple string list, map them to robust notification objects
         if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === "string") {
           const mapped: NotificationItem[] = parsed.map((str: string, index: number) => {
             let type: "success" | "alert" | "error" = "alert";
@@ -49,14 +72,21 @@ export default function NotificationsPage() {
           setNotes(parsed);
         }
       } catch (e) {
-        // Malformed cache — start clean rather than fabricating data
         setNotes([]);
       }
     } else {
-      // No notifications yet — alerts are generated from real activity (e.g. budget thresholds)
       setNotes([]);
     }
-  };
+  }
+
+  useEffect(() => {
+    window.addEventListener("datastore:change", loadNotifications);
+    window.addEventListener("storage", loadNotifications);
+    return () => {
+      window.removeEventListener("datastore:change", loadNotifications);
+      window.removeEventListener("storage", loadNotifications);
+    };
+  }, []);
 
   const handleMarkAllRead = () => {
     const updated = notes.map((n) => ({ ...n, read: true }));

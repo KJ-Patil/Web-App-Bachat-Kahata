@@ -6,7 +6,6 @@ import { addTransaction, getTransactions, getBudgets } from "@/core/store/dataSt
 import { getActiveCategories, resolveCategoryIcon } from "@/core/utils/categories";
 import { getCurrencySymbol } from "@/core/utils/currencyManager";
 import type { CategoryData } from "@/components/modals/AddCategoryModal";
-import CalculatorPopover from "@/components/inputs/CalculatorPopover";
 
 interface AddTransactionModalProps {
   isOpen: boolean;
@@ -40,17 +39,19 @@ export default function AddTransactionModal({
     if (isOpen) {
       const expenses = getActiveCategories("expense");
       const incomes = getActiveCategories("income");
-      setExpenseCategories(expenses);
-      setIncomeCategories(incomes);
-      setActiveCurrency(localStorage.getItem("active_currency") || "INR");
-      setTransactionType("expense");
-      setAmount("");
-      setCategory(expenses[0]?.name ?? "");
-      setDescription("");
-      setDiscountMode("percent");
-      setDiscountValue("");
-      setSuccess(false);
-      setAlertMessage(null);
+      setTimeout(() => {
+        setExpenseCategories(expenses);
+        setIncomeCategories(incomes);
+        setActiveCurrency(localStorage.getItem("active_currency") || "INR");
+        setTransactionType("expense");
+        setAmount("");
+        setCategory(expenses[0]?.name ?? "");
+        setDescription("");
+        setDiscountMode("percent");
+        setDiscountValue("");
+        setSuccess(false);
+        setAlertMessage(null);
+      }, 0);
     }
   }, [isOpen]);
 
@@ -239,16 +240,13 @@ export default function AddTransactionModal({
                     type="number"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="input-base pl-9 pr-12 w-full text-lg font-extrabold tracking-tight"
+                    className="input-base pl-9 pr-3 w-full text-lg font-extrabold tracking-tight"
                     placeholder="0.00"
                     min="0.01"
                     step="0.01"
                     required
                     autoFocus
                   />
-                  <div className="absolute right-3 flex items-center">
-                    <CalculatorPopover value={amount} onChange={setAmount} title="Amount Calc" />
-                  </div>
                 </div>
               </div>
 
@@ -291,15 +289,12 @@ export default function AddTransactionModal({
                         type="number"
                         value={discountValue}
                         onChange={(e) => setDiscountValue(e.target.value)}
-                        className="input-base pr-12 w-full font-bold"
+                        className="input-base pr-3 w-full font-bold"
                         placeholder={discountMode === "percent" ? "e.g. 50" : "e.g. 500"}
                         min="0"
                         max={discountMode === "percent" ? "100" : undefined}
                         step="0.01"
                       />
-                      <div className="absolute right-3 flex items-center">
-                        <CalculatorPopover value={discountValue} onChange={setDiscountValue} title="Discount Calc" />
-                      </div>
                     </div>
                   </div>
 

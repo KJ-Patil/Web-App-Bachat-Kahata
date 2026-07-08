@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
 import { Customer, LedgerEntry } from "../page";
-import CalculatorPopover from "@/components/inputs/CalculatorPopover";
 import {
   getLedgerCustomers,
   setLedgerCustomers,
@@ -27,6 +26,7 @@ import {
   deleteTransaction,
   generateId,
 } from "@/core/store/dataStore";
+import FlashReminderModal from "@/components/modals/FlashReminderModal";
 
 export default function CustomerLedgerPage({
   params,
@@ -49,6 +49,7 @@ export default function CustomerLedgerPage({
 
   // Delete confirmation
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [isReminderOpen, setIsReminderOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -179,29 +180,21 @@ export default function CustomerLedgerPage({
 
   // Compute running balance for each history entry (newest first)
   const historyWithRunning = (() => {
+    const result = [];
     let running = customer.balance;
-    return customer.history.map((entry, i) => {
+    for (let i = 0; i < customer.history.length; i++) {
+      const entry = customer.history[i];
       const currentRunning = running;
-      // Walk backwards: undo the effect to get previous running balance
       if (i < customer.history.length - 1) {
         running =
           entry.type === "gave"
             ? running - entry.amount
             : running + entry.amount;
       }
-      return { ...entry, runningBalance: currentRunning };
-    });
+      result.push({ ...entry, runningBalance: currentRunning });
+    }
+    return result;
   })();
-
-  // WhatsApp reconciliation link
-  const getWhatsAppLink = () => {
-    const balanceStr = formatAmount(absBal, activeCurrency);
-    const message = isCredit
-      ? `Dear ${customer.name}, a friendly reminder regarding your pending balance of ${balanceStr} on Bachat Khata. Please review and reconcile at your earliest convenience. Thank you!`
-      : `Dear ${customer.name}, this is a payment reconciliation notice from Bachat Khata. Your pending supplier balance of ${balanceStr} is being processed. Thank you for your continued partnership!`;
-
-    return `https://wa.me/${customer.phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(message)}`;
-  };
 
   // Stats
   const totalGave = customer.history
@@ -337,15 +330,13 @@ export default function CustomerLedgerPage({
 
         {/* WhatsApp Quick Action */}
         {!isSettled && (
-          <a
-            href={getWhatsAppLink()}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={() => setIsReminderOpen(true)}
             className="py-4 rounded-2xl bg-card border-2 border-dashed border-success/40 text-success hover:bg-success-light hover:border-success text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer col-span-2 sm:col-span-1"
           >
             <MessageSquare className="w-5 h-5 stroke-[2.5px]" />
-            WhatsApp Reminder
-          </a>
+            Send Reminder
+          </button>
         )}
       </section>
 
@@ -387,16 +378,13 @@ export default function CustomerLedgerPage({
                   type="number"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="input-base pr-12 w-full text-sm font-bold"
+                  className="input-base pr-3 w-full text-sm font-bold"
                   placeholder="0.00"
                   min="0.01"
                   step="0.01"
                   required
                   autoFocus
                 />
-                <div className="absolute right-3 flex items-center">
-                  <CalculatorPopover value={amount} onChange={setAmount} title="Amount Calc" />
-                </div>
               </div>
             </div>
 
@@ -558,6 +546,19 @@ export default function CustomerLedgerPage({
           </div>
         )}
       </section>
+
+      {/* Flash message reminder dispatcher */}
+      {isReminderOpen && (
+        <FlashReminderModal
+          isOpen={true}
+          onClose={() => setIsReminderOpen(false)}
+          recipientName={customer.name}
+          recipientPhone={customer.phone}
+          balance={customer.balance}
+          relation={customer.balance > 0 ? "credit" : "debit"}
+          currency={activeCurrency}
+        />
+      )}
     </div>
   );
 }

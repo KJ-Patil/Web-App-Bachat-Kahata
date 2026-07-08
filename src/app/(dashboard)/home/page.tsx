@@ -30,7 +30,19 @@ import {
 
 export default function WorkspacePage() {
   const [isMounted, setIsMounted] = useState(false);
-  const [userName, setUserName] = useState("Guest");
+  const [userName] = useState(() => {
+    if (typeof window === "undefined") return "Guest";
+    const session = localStorage.getItem("user_session");
+    if (session) {
+      try {
+        const parsed = JSON.parse(session);
+        return parsed.name || "Guest";
+      } catch {
+        return "Guest";
+      }
+    }
+    return "Guest";
+  });
   const [activeCurrency, setActiveCurrency] = useState("INR");
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<string[]>([]);
@@ -88,39 +100,43 @@ export default function WorkspacePage() {
 
   // Prevent Next.js hydration issues with Recharts + load client-only state.
   useEffect(() => {
-    setIsMounted(true);
+    setTimeout(() => {
+      setIsMounted(true);
+    }, 0);
     if (typeof window !== "undefined") {
-      const session = localStorage.getItem("user_session");
-      if (session) {
-        try {
-          const parsed = JSON.parse(session);
-          if (parsed.name) {
-            setUserName(parsed.name);
+      const loadData = () => {
+        const configCurrency = localStorage.getItem("active_currency");
+        if (configCurrency) {
+          setActiveCurrency(configCurrency);
+        }
+
+        const storedNotes = localStorage.getItem("notifications");
+        if (storedNotes) {
+          try {
+            const parsed = JSON.parse(storedNotes);
+            // Notifications may be stored as raw strings or as objects with text/message.
+            setNotifications(
+              parsed.map((n: unknown) =>
+                typeof n === "string"
+                  ? n
+                  : (n as { text?: string }).text || (n as { message?: string }).message || String(n)
+              )
+            );
+          } catch {
+            // Ignore malformed notification cache
           }
-        } catch (e) {
-          // Fallback to raw session value or defaults
+        } else {
+          setNotifications([]);
         }
-      }
+      };
 
-      const configCurrency = localStorage.getItem("active_currency");
-      if (configCurrency) {
-        setActiveCurrency(configCurrency);
-      }
-
-      const storedNotes = localStorage.getItem("notifications");
-      if (storedNotes) {
-        try {
-          const parsed = JSON.parse(storedNotes);
-          // Notifications may be stored as raw strings or as objects with a message.
-          setNotifications(
-            parsed.map((n: unknown) =>
-              typeof n === "string" ? n : (n as { message?: string }).message || String(n)
-            )
-          );
-        } catch (e) {
-          // Ignore malformed notification cache
-        }
-      }
+      loadData();
+      window.addEventListener("datastore:change", loadData);
+      window.addEventListener("storage", loadData);
+      return () => {
+        window.removeEventListener("datastore:change", loadData);
+        window.removeEventListener("storage", loadData);
+      };
     }
   }, []);
 
