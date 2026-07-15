@@ -248,6 +248,8 @@ export default function WorkspacePage() {
       {/* ────────────────── SAFE-TO-SPEND CARD ────────────────── */}
       <SafeToSpendCard />
 
+
+
       {/* ────────────────── STATISTICAL GRID ────────────────── */}
       <section className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
         <div className="grid grid-cols-1 md:grid-cols-5 divide-y md:divide-y-0 md:divide-x divide-border-strong">

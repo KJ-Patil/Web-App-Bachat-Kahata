@@ -119,6 +119,8 @@ export const KEYS = {
   familyGroups: "family_groups",
   familyExpenses: "family_expenses",
   manualSubscriptions: "manual_subscriptions",
+  monthlyIncome: "monthly_income",
+  moneyRuleSplit: "money_rule_split",
 } as const;
 
 const STORE_EVENT = "datastore:change";
@@ -137,6 +139,8 @@ const SENSITIVE_KEYS: string[] = [
   KEYS.familyGroups,
   KEYS.familyExpenses,
   KEYS.manualSubscriptions,
+  KEYS.monthlyIncome,
+  KEYS.moneyRuleSplit,
 ];
 
 /**
@@ -160,6 +164,8 @@ const FINANCIAL_KEYS = [
   KEYS.familyGroups,
   KEYS.familyExpenses,
   KEYS.manualSubscriptions,
+  KEYS.monthlyIncome,
+  KEYS.moneyRuleSplit,
   "notifications",
   "mood_logs",
   // Legacy / derived caches that were seeded with fabricated values
@@ -187,6 +193,8 @@ export function clearFinancialData(): void {
   writeJSON(KEYS.familyGroups, []);
   writeJSON(KEYS.familyExpenses, []);
   writeJSON(KEYS.manualSubscriptions, []);
+  writeJSON(KEYS.monthlyIncome, 0);
+  writeJSON(KEYS.moneyRuleSplit, { needs: 50, wants: 30, investments: 20 });
 
   // 2. Remove any remaining local-only financial keys
   FINANCIAL_KEYS.forEach((key) => {
@@ -569,6 +577,30 @@ export function deleteManualSubscription(id: string): void {
   setManualSubscriptions(getManualSubscriptions().filter((s) => s.id !== id));
 }
 
+// ──────────────── MONTHLY INCOME ────────────────
+export function getMonthlyIncome(): number {
+  return readJSON<number>(KEYS.monthlyIncome, 0);
+}
+
+export function setMonthlyIncome(income: number): void {
+  writeJSON(KEYS.monthlyIncome, income);
+}
+
+// ──────────────── MONEY RULE SPLIT RATIOS ────────────────
+export interface MoneyRuleSplit {
+  needs: number;
+  wants: number;
+  investments: number;
+}
+
+export function getMoneyRuleSplit(): MoneyRuleSplit {
+  return readJSON<MoneyRuleSplit>(KEYS.moneyRuleSplit, { needs: 50, wants: 30, investments: 20 });
+}
+
+export function setMoneyRuleSplit(split: MoneyRuleSplit): void {
+  writeJSON(KEYS.moneyRuleSplit, split);
+}
+
 // ──────────────── DERIVED SELECTORS ────────────────
 const sum = (txs: Transaction[]) => txs.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
 
@@ -844,6 +876,38 @@ export function useManualSubscriptions(): ManualSubscription[] {
   return subs;
 }
 
+/** Subscribe to the monthly income. */
+export function useMonthlyIncome(): number {
+  const [income, setIncomeState] = useState<number>(0);
+  useEffect(() => {
+    const sync = () => setIncomeState(getMonthlyIncome());
+    sync();
+    window.addEventListener(STORE_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(STORE_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+  return income;
+}
+
+/** Subscribe to custom budget splitting ratios. */
+export function useMoneyRuleSplit(): MoneyRuleSplit {
+  const [split, setSplitState] = useState<MoneyRuleSplit>({ needs: 50, wants: 30, investments: 20 });
+  useEffect(() => {
+    const sync = () => setSplitState(getMoneyRuleSplit());
+    sync();
+    window.addEventListener(STORE_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(STORE_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+  return split;
+}
+
 /** Subscribe to the family expenses store. */
 export function useFamilyExpenses(): GroupExpense[] {
   const [expenses, setExpenses] = useState<GroupExpense[]>([]);
@@ -888,7 +952,7 @@ export async function createCloudBackup(label?: string): Promise<string> {
     // Read the decrypted value from the in-memory cache (localStorage holds
     // ciphertext). The backup doc, like appData, is plaintext in the cloud.
     const val = memCache.get(key);
-    backupData[key] = val !== undefined ? val : (key === KEYS.budgets ? {} : []);
+    backupData[key] = val !== undefined ? val : (key === KEYS.budgets ? {} : key === KEYS.moneyRuleSplit ? { needs: 50, wants: 30, investments: 20 } : key === KEYS.monthlyIncome ? 0 : []);
   }
   
   const backupRecord = {
@@ -955,7 +1019,7 @@ export async function restoreCloudBackup(backupId: string): Promise<void> {
   // Overwrite the decrypted cache + encrypted localStorage + cloud. writeJSON
   // handles all three (memCache, ciphertext to disk, plaintext to Firestore).
   for (const key of SYNCED_KEYS) {
-    const val = backupData[key] !== undefined ? backupData[key] : (key === KEYS.budgets ? {} : []);
+    const val = backupData[key] !== undefined ? backupData[key] : (key === KEYS.budgets ? {} : key === KEYS.moneyRuleSplit ? { needs: 50, wants: 30, investments: 20 } : key === KEYS.monthlyIncome ? 0 : []);
     writeJSON(key, val);
   }
 

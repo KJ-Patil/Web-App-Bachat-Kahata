@@ -37,6 +37,7 @@
     "transactions": "लेन-देन",
     "calendar": "कैलेंडर",
     "budgets": "बजट",
+    "moneyRule": "बजट नियम",
     "savingsGoals": "बचत लक्ष्य",
     "notebooks": "नोटबुक",
     "billSplitter": "बिल विभाजक",
@@ -242,6 +243,22 @@
     "budgetBreached": "बजट सीमा {amount} से अधिक हो गई!",
     "budgetWarning": "चेतावनी: बजट उपयोग 80% सीमा से ऊपर है।",
     "optimalStatus": "इष्टतम श्रेणी संतुलन स्थिति।"
+  },
+  "moneyRule": {
+    "cardTitle": "बजट नियम",
+    "monthlyAllocation": "मासिक आवंटन",
+    "setIncomePrompt": "बजट आवंटन को स्वचालित रूप से ट्रैक करने के लिए अपनी मासिक आय दर्ज करें।",
+    "setIncomeBtn": "आय दर्ज करें",
+    "needs": "आवश्यकताएं (50%)",
+    "wants": "इच्छाएं (30%)",
+    "investments": "निवेश (20%)",
+    "overBudget": "बजट से बाहर",
+    "nearLimit": "सीमा के करीब",
+    "onTrack": "सही रास्ते पर",
+    "title": "बजट नियम",
+    "subtitle": "मासिक आय को आवश्यकताएं, इच्छाएं और निवेश आवंटन में स्वचालित रूप से विभाजित करें।",
+    "takeHomeIncome": "मासिक टेक-होम आय",
+    "activeMonth": "गणना अवधि"
   },
   "savings": {
     "savingsObjectives": "बचत उद्देश्य",

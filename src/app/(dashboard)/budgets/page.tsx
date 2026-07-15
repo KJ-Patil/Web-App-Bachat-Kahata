@@ -1,12 +1,15 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { ChevronLeft, ChevronRight, Edit3, ShieldCheck, AlertTriangle, Play } from "lucide-react";
+import React, { useState, useEffect, useMemo } from "react";
+import { ChevronLeft, ChevronRight, Edit3, ShieldCheck, AlertTriangle, PieChart, Target, Settings2, Sliders, CheckCircle, Info, RefreshCw, AlertCircle, HelpCircle } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
 import SetBudgetModal from "@/components/modals/SetBudgetModal";
-import { getBudgets, getTransactions } from "@/core/store/dataStore";
+import { getBudgets, getTransactions, useTransactions, useBudgets, useMonthlyIncome, useMoneyRuleSplit, setMonthlyIncome, setMoneyRuleSplit } from "@/core/store/dataStore";
+import { computeMoneyRule } from "@/core/insights/moneyRule";
+import { getBucketForCategory } from "@/core/utils/bucketConfig";
 import { getActiveCategories, resolveCategoryIcon } from "@/core/utils/categories";
 import { useTranslation } from "@/i18n/i18nContext";
+import { ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell, Tooltip } from "recharts";
 
 interface CategorySummary {
   id: string;
@@ -17,38 +20,59 @@ interface CategorySummary {
 }
 
 export default function BudgetsPage() {
+  const [activeTab, setActiveTab] = useState<"rule" | "categories">("rule");
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [budgets, setBudgets] = useState<Record<string, number>>({});
-  const [categorySummaries, setCategorySummaries] = useState<CategorySummary[]>([]);
   const [activeCurrency, setActiveCurrency] = useState("INR");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Income Input State
+  const [incomeInput, setIncomeInput] = useState("");
+  const [isEditingIncome, setIsEditingIncome] = useState(false);
+
+  // Split Editing State
+  const [isEditingSplit, setIsEditingSplit] = useState(false);
+  const [needsPct, setNeedsPct] = useState("50");
+  const [wantsPct, setWantsPct] = useState("30");
+  const [investPct, setInvestPct] = useState("20");
+  const [splitError, setSplitError] = useState("");
 
   const { t } = useTranslation();
+  
+  // Real-time hooks from datastore
+  const transactions = useTransactions();
+  const activeBudgets = useBudgets();
+  const storedIncome = useMonthlyIncome();
+  const storedSplit = useMoneyRuleSplit();
 
   useEffect(() => {
-    loadBudgetData();
-  }, [selectedDate]);
-
-  const loadBudgetData = () => {
+    setIsMounted(true);
     if (typeof window === "undefined") return;
-
-    // Load active currency
     const cur = localStorage.getItem("active_currency");
     if (cur) setActiveCurrency(cur);
+  }, []);
 
-    // Load budgets (empty until the user configures them — no fabricated caps)
-    const activeBudgets = getBudgets();
-    setBudgets(activeBudgets);
+  // Update input states when stored values load
+  useEffect(() => {
+    if (isMounted) {
+      setIncomeInput(storedIncome.toString());
+      setNeedsPct(storedSplit.needs.toString());
+      setWantsPct(storedSplit.wants.toString());
+      setInvestPct(storedSplit.investments.toString());
+    }
+  }, [storedIncome, storedSplit, isMounted]);
 
-    // Load transactions
-    const transactions = getTransactions();
+  // Compute 50/30/20 data
+  const moneyRuleData = useMemo(() => {
+    return computeMoneyRule(storedIncome, transactions, selectedDate, storedSplit, activeBudgets);
+  }, [storedIncome, transactions, selectedDate, storedSplit, activeBudgets]);
 
+  // Compute Category Budgets list data
+  const categorySummaries = useMemo(() => {
     const targetMonth = selectedDate.getMonth();
     const targetYear = selectedDate.getFullYear();
 
-    // Map summaries over the user's active expense categories (referenced by
-    // name, matching how transactions and budgets are keyed).
-    const summaries = getActiveCategories("expense").map((cat) => {
+    return getActiveCategories("expense").map((cat) => {
       const limit = activeBudgets[cat.name] || 0;
 
       const spent = transactions
@@ -71,9 +95,7 @@ export default function BudgetsPage() {
         limit,
       };
     });
-
-    setCategorySummaries(summaries);
-  };
+  }, [transactions, activeBudgets, selectedDate]);
 
   const handlePrevMonth = () => {
     setSelectedDate((prev) => {
@@ -95,47 +117,183 @@ export default function BudgetsPage() {
     return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
   };
 
-  const getProgressColor = (spent: number, limit: number) => {
-    const ratio = spent / limit;
-    if (ratio >= 1.0) {
-      return "bg-error"; // Exceeded limit
+  const handleSaveIncome = (e: React.FormEvent) => {
+    e.preventDefault();
+    const val = parseFloat(incomeInput);
+    if (!isNaN(val) && val >= 0) {
+      setMonthlyIncome(val);
+      setIsEditingIncome(false);
     }
-    if (ratio >= 0.8) {
-      return "bg-warning"; // Approaching warning limit (80% capacity)
+  };
+
+  const handleSaveSplit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const nVal = parseInt(needsPct, 10);
+    const wVal = parseInt(wantsPct, 10);
+    const iVal = parseInt(investPct, 10);
+
+    if (isNaN(nVal) || isNaN(wVal) || isNaN(iVal) || nVal < 0 || wVal < 0 || iVal < 0) {
+      setSplitError("All split percentages must be non-negative integers.");
+      return;
     }
-    return "bg-primary"; // Under limit
+
+    const total = nVal + wVal + iVal;
+    if (total !== 100) {
+      setSplitError(`Split ratios must add up to exactly 100%. Current sum: ${total}%`);
+      return;
+    }
+
+    setSplitError("");
+    setMoneyRuleSplit({
+      needs: nVal,
+      wants: wVal,
+      investments: iVal
+    });
+    setIsEditingSplit(false);
+  };
+
+  const handleResetSplit = () => {
+    setNeedsPct("50");
+    setWantsPct("30");
+    setInvestPct("20");
+    setSplitError("");
+    setMoneyRuleSplit({
+      needs: 50,
+      wants: 30,
+      investments: 20
+    });
+    setIsEditingSplit(false);
+  };
+
+  // Group transactions for detailed bucket lists
+  const bucketTransactions = useMemo(() => {
+    const targetMonth = selectedDate.getMonth();
+    const targetYear = selectedDate.getFullYear();
+
+    const filtered = transactions.filter((tx) => {
+      const txDate = new Date(tx.date);
+      return (
+        tx.type === "expense" &&
+        txDate.getMonth() === targetMonth &&
+        txDate.getFullYear() === targetYear
+      );
+    });
+
+    const groups = {
+      needs: [] as typeof transactions,
+      wants: [] as typeof transactions,
+      investments: [] as typeof transactions,
+    };
+
+    for (const tx of filtered) {
+      const bucket = getBucketForCategory(tx.category);
+      if (groups[bucket]) {
+        groups[bucket].push(tx);
+      }
+    }
+
+    return groups;
+  }, [transactions, selectedDate]);
+
+  const getStatusBadgeClass = (status: string) => {
+    switch (status) {
+      case "Over Budget":
+        return "bg-error-light text-error border-error-light";
+      case "Near Limit":
+        return "bg-warning-light text-brand border-warning-light";
+      default:
+        return "bg-success-light text-success border-success-light";
+    }
+  };
+
+  const getProgressColor = (status: string) => {
+    switch (status) {
+      case "Over Budget":
+        return "bg-error";
+      case "Near Limit":
+        return "bg-warning";
+      default:
+        return "bg-primary";
+    }
   };
 
   const getCardBorderColor = (spent: number, limit: number) => {
-    const ratio = spent / limit;
+    const ratio = limit > 0 ? spent / limit : 0;
     if (ratio >= 1.0) return "border-error-light";
     if (ratio >= 0.8) return "border-warning-light";
     return "border-border";
   };
 
+  const donutChartData = useMemo(() => {
+    return [
+      { name: "Needs Spending", value: moneyRuleData.needs.spent, color: "#1d4ed8" },
+      { name: "Wants Spending", value: moneyRuleData.wants.spent, color: "#7c3aed" },
+      { name: "Investments Spending", value: moneyRuleData.investments.spent, color: "#10b981" },
+    ].filter(item => item.value > 0);
+  }, [moneyRuleData]);
+
+  if (!isMounted) {
+    return (
+      <div className="flex-1 flex items-center justify-center min-h-screen">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
   return (
-    <div className="flex-1 flex flex-col p-6 space-y-6 md:p-8 max-w-4xl mx-auto w-full">
+    <div className="flex-1 flex flex-col p-6 space-y-6 md:p-8 max-w-6xl mx-auto w-full">
+      
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div className="space-y-1">
           <h1 className="text-2xl font-extrabold text-foreground tracking-tight sm:text-3xl">
-            {t('budgets.categoryBudgets')}
+            {activeTab === "rule" ? "Budgeting Rule" : t("budgets.categoryBudgets")}
           </h1>
           <p className="text-sm font-medium text-foreground-muted">
-            {t('budgets.establishBoundaries')}
+            {activeTab === "rule" 
+              ? "Plan monthly spending limits based on customized split targets."
+              : t("budgets.establishBoundaries")}
           </p>
         </div>
 
+        {activeTab === "categories" && (
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="btn-primary shrink-0 flex items-center justify-center gap-2"
+          >
+            <Edit3 className="w-4 h-4" />
+            {t("budgets.adjustBudgets")}
+          </button>
+        )}
+      </div>
+
+      {/* ────────────────── SEGMENT SELECTOR TABS ────────────────── */}
+      <div className="flex border-b border-border">
         <button
-          onClick={() => setIsModalOpen(true)}
-          className="btn-primary shrink-0 flex items-center justify-center gap-2"
+          onClick={() => setActiveTab("rule")}
+          className={`py-3 px-6 text-sm font-bold border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
+            activeTab === "rule"
+              ? "border-primary text-primary font-extrabold"
+              : "border-transparent text-foreground-muted hover:text-foreground hover:border-border"
+          }`}
         >
-          <Edit3 className="w-4 h-4" />
-          {t('budgets.adjustBudgets')}
+          <PieChart className="w-4 h-4" />
+          Rule Allocations
+        </button>
+        <button
+          onClick={() => setActiveTab("categories")}
+          className={`py-3 px-6 text-sm font-bold border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
+            activeTab === "categories"
+              ? "border-primary text-primary font-extrabold"
+              : "border-transparent text-foreground-muted hover:text-foreground hover:border-border"
+          }`}
+        >
+          <Target className="w-4 h-4" />
+          Category Limits
         </button>
       </div>
 
-      {/* ────────────────── MONTH NAVIGATION SWITCHER ────────────────── */}
+      {/* ────────────────── CALCULATION PERIOD NAVIGATION ────────────────── */}
       <section className="bg-card border border-border p-4 rounded-2xl shadow-sm flex items-center justify-between">
         <button
           onClick={handlePrevMonth}
@@ -158,101 +316,473 @@ export default function BudgetsPage() {
         </button>
       </section>
 
-      {/* ────────────────── BUDGET PROGRESS LIST ROWS ────────────────── */}
-      <section className="space-y-4">
-        {categorySummaries.map((summary) => {
-          const Icon = summary.icon;
-          const hasLimit = summary.limit > 0;
-          const pct = hasLimit ? Math.min(Math.round((summary.spent / summary.limit) * 100), 200) : 0;
-          const isOver = hasLimit && summary.spent >= summary.limit;
-          const isWarning = hasLimit && summary.spent / summary.limit >= 0.8 && !isOver;
-
-          return (
-            <div
-              key={summary.id}
-              className={`bg-card border p-5 rounded-2xl shadow-sm space-y-4 transition-all hover:shadow-md ${getCardBorderColor(
-                summary.spent,
-                summary.limit
-              )}`}
-            >
-              {/* Row Header */}
-              <div className="flex justify-between items-start gap-4">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center border border-border shrink-0 ${
-                    isOver 
-                      ? "bg-error-light text-error" 
-                      : isWarning 
-                        ? "bg-warning-light text-brand"
-                        : "bg-primary-lighter text-primary"
-                  }`}>
-                    <Icon className="w-5 h-5" />
+      {/* ────────────────── TAB 1: BUDGETING RULE VIEW ────────────────── */}
+      {activeTab === "rule" && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Income and Split Settings grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* Income Card */}
+            <div className="bg-card border border-border p-5 rounded-2xl shadow-sm flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-foreground-muted tracking-wide uppercase block">
+                  {t("moneyRule.takeHomeIncome") !== "moneyRule.takeHomeIncome" ? t("moneyRule.takeHomeIncome") : "Monthly Take-Home Income"}
+                </span>
+                {isEditingIncome ? (
+                  <form onSubmit={handleSaveIncome} className="flex items-center gap-2 mt-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-extrabold text-foreground-muted">
+                        {activeCurrency === "INR" ? "₹" : "$"}
+                      </span>
+                      <input
+                        type="number"
+                        value={incomeInput}
+                        onChange={(e) => setIncomeInput(e.target.value)}
+                        placeholder="0"
+                        className="pl-8 pr-3 py-1.5 w-full rounded-xl border border-border text-base font-extrabold text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
+                        autoFocus
+                      />
+                    </div>
+                    <button type="submit" className="btn-primary py-1.5 px-3 text-xs font-bold shrink-0">
+                      {t("common.save")}
+                    </button>
+                  </form>
+                ) : (
+                  <div className="flex items-center gap-3 mt-1.5">
+                    <span className="text-2xl font-black text-foreground tracking-tight">
+                      {formatAmount(storedIncome, activeCurrency, { decimalPlaces: 0 })}
+                    </span>
+                    <button
+                      onClick={() => setIsEditingIncome(true)}
+                      className="p-1 rounded-lg hover:bg-secondary text-icon-default hover:text-icon-active transition-all"
+                      title="Edit Income"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
                   </div>
-                  <div>
-                    <h3 className="font-extrabold text-foreground text-sm">{summary.name}</h3>
-                    <span className="text-[10px] font-bold text-foreground-secondary tracking-wide uppercase">
-                      {hasLimit ? `${t('budgets.budget')}: ${formatAmount(summary.limit, activeCurrency)}` : t('budgets.noBudgetSet')}
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-border text-xs">
+                <div>
+                  <span className="text-[9px] font-bold text-foreground-muted uppercase tracking-wider block">Needs ({storedSplit.needs}%)</span>
+                  <span className="font-extrabold text-foreground">
+                    {formatAmount(storedIncome * (storedSplit.needs / 100), activeCurrency, { decimalPlaces: 0 })}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[9px] font-bold text-foreground-muted uppercase tracking-wider block">Wants ({storedSplit.wants}%)</span>
+                  <span className="font-extrabold text-foreground">
+                    {formatAmount(storedIncome * (storedSplit.wants / 100), activeCurrency, { decimalPlaces: 0 })}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[9px] font-bold text-foreground-muted uppercase tracking-wider block">Invest ({storedSplit.investments}%)</span>
+                  <span className="font-extrabold text-foreground">
+                    {formatAmount(storedIncome * (storedSplit.investments / 100), activeCurrency, { decimalPlaces: 0 })}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Split Percentages Configuration Card */}
+            <div className="bg-card border border-border p-5 rounded-2xl shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-bold text-foreground-muted tracking-wide uppercase block">
+                    Ratio Split configuration
+                  </span>
+                  {!isEditingSplit && (
+                    <button
+                      onClick={() => setIsEditingSplit(true)}
+                      className="p-1 rounded-lg hover:bg-secondary text-icon-default hover:text-icon-active transition-all"
+                      title="Configure Splitting"
+                    >
+                      <Settings2 className="w-4 h-4 text-primary" />
+                    </button>
+                  )}
+                </div>
+                
+                {isEditingSplit ? (
+                  <form onSubmit={handleSaveSplit} className="space-y-3 mt-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-[9px] font-bold text-foreground-secondary uppercase tracking-wider block">Needs %</label>
+                        <input
+                          type="number"
+                          value={needsPct}
+                          onChange={(e) => setNeedsPct(e.target.value)}
+                          className="w-full text-center py-1 rounded-lg border border-border text-xs font-bold text-foreground focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-foreground-secondary uppercase tracking-wider block">Wants %</label>
+                        <input
+                          type="number"
+                          value={wantsPct}
+                          onChange={(e) => setWantsPct(e.target.value)}
+                          className="w-full text-center py-1 rounded-lg border border-border text-xs font-bold text-foreground focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-foreground-secondary uppercase tracking-wider block">Invest %</label>
+                        <input
+                          type="number"
+                          value={investPct}
+                          onChange={(e) => setInvestPct(e.target.value)}
+                          className="w-full text-center py-1 rounded-lg border border-border text-xs font-bold text-foreground focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {splitError && (
+                      <p className="text-[10px] font-extrabold text-error flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3 shrink-0" />
+                        <span>{splitError}</span>
+                      </p>
+                    )}
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <button type="submit" className="btn-primary py-1 px-3 text-[10px] font-black uppercase">
+                        Apply Split
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleResetSplit}
+                        className="btn-secondary py-1 px-2 text-[10px] font-bold flex items-center gap-1 border-dashed"
+                        title="Reset to default ratios"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        Reset Default
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="flex items-center gap-3 mt-1.5">
+                    <span className="text-2xl font-black text-foreground tracking-tight">
+                      {storedSplit.needs} / {storedSplit.wants} / {storedSplit.investments}
+                    </span>
+                    <span className="text-[10px] font-semibold text-foreground-muted bg-secondary px-2 py-0.5 rounded-full">
+                      Ratios Sum: 100%
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {!isEditingSplit && (
+                <p className="text-[11px] font-medium text-foreground-muted flex items-center gap-1 mt-3">
+                  <Sliders className="w-3.5 h-3.5 text-primary shrink-0" />
+                  <span>Tap the gear icon to change splits (e.g. 60/20/20 or 40/40/20).</span>
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Core breakdown layout grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            {/* Spending Chart Column */}
+            <div className="lg:col-span-1 space-y-6">
+              <div className="bg-card border border-border p-6 rounded-2xl shadow-sm space-y-4">
+                <h3 className="text-sm font-extrabold text-foreground">Spending Chart</h3>
+                
+                {donutChartData.length > 0 ? (
+                  <div className="h-60 w-full flex items-center justify-center relative">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie
+                          data={donutChartData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={80}
+                          paddingAngle={4}
+                          dataKey="value"
+                        >
+                          {donutChartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value) => formatAmount(value as number, activeCurrency)} />
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+                    
+                    <div className="absolute flex flex-col items-center justify-center text-center">
+                      <span className="text-[10px] font-bold text-foreground-muted uppercase tracking-wider">Total Spent</span>
+                      <span className="text-lg font-black text-foreground">
+                        {formatAmount(
+                          moneyRuleData.needs.spent + moneyRuleData.wants.spent + moneyRuleData.investments.spent, 
+                          activeCurrency,
+                          { decimalPlaces: 0 }
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-60 flex flex-col items-center justify-center text-center p-4 bg-background-subtle rounded-xl border border-dashed border-border text-foreground-muted">
+                    <AlertCircle className="w-8 h-8 mb-2" />
+                    <span className="text-xs font-semibold">No expenses logged in {formatMonthLabel(selectedDate)}</span>
+                  </div>
+                )}
+
+                <div className="space-y-2 pt-2">
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded bg-[#1d4ed8]" />
+                      <span className="text-foreground">Needs ({storedSplit.needs}%)</span>
+                    </div>
+                    <span className="text-foreground-secondary">{formatAmount(moneyRuleData.needs.spent, activeCurrency)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded bg-[#7c3aed]" />
+                      <span className="text-foreground">Wants ({storedSplit.wants}%)</span>
+                    </div>
+                    <span className="text-foreground-secondary">{formatAmount(moneyRuleData.wants.spent, activeCurrency)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded bg-[#10b981]" />
+                      <span className="text-foreground">Investments ({storedSplit.investments}%)</span>
+                    </div>
+                    <span className="text-foreground-secondary">{formatAmount(moneyRuleData.investments.spent, activeCurrency)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Bucket cards listing Column */}
+            <div className="lg:col-span-2 space-y-6">
+              {(["needs", "wants", "investments"] as const).map((key) => {
+                const data = moneyRuleData[key];
+                const txs = bucketTransactions[key];
+                const title = key === "needs" 
+                  ? `Needs (${storedSplit.needs}%)` 
+                  : key === "wants" 
+                  ? `Wants (${storedSplit.wants}%)` 
+                  : `Investments (${storedSplit.investments}%)`;
+                const desc = key === "needs" 
+                  ? "Essential expenses (Rent, Groceries, Utilities, Insurance, EMIs)" 
+                  : key === "wants" 
+                  ? "Lifestyle spending (Dining out, Hobbies, Gym, Shopping, Subscriptions)" 
+                  : "Financial health & future growth (FD, SIP, Mutual Funds, Stocks, Gold)";
+
+                return (
+                  <div key={key} className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+                    {/* Header */}
+                    <div className="p-5 border-b border-border bg-background-subtle flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <h3 className="text-base font-extrabold text-foreground flex items-center gap-2">
+                          {title}
+                          <span className={`text-[10px] font-extrabold px-2 py-0.5 border rounded-full tracking-wide uppercase ${getStatusBadgeClass(data.status)}`}>
+                            {data.status}
+                          </span>
+                        </h3>
+                        <p className="text-xs text-foreground-muted">{desc}</p>
+                      </div>
+                      
+                      <div className="text-left md:text-right">
+                        <span className="text-[10px] font-bold text-foreground-muted uppercase tracking-wider block">Remaining</span>
+                        <span className={`text-base font-black tracking-tight ${data.remaining < 0 ? "text-error" : "text-foreground"}`}>
+                          {formatAmount(data.remaining, activeCurrency)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-5 space-y-4">
+                      {/* Grid Stats */}
+                      <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+                        <div className="bg-background-subtle p-3 rounded-xl">
+                          <span className="text-[9px] font-bold text-foreground-muted uppercase tracking-wider block">Rule Limit</span>
+                          <span className="text-xs font-extrabold text-foreground">{formatAmount(data.budget, activeCurrency)}</span>
+                        </div>
+                        <div className="bg-background-subtle p-3 rounded-xl">
+                          <span className="text-[9px] font-bold text-foreground-muted uppercase tracking-wider block">Allocated Budgets</span>
+                          <span className="text-xs font-extrabold text-foreground">{formatAmount(data.allocatedBudget, activeCurrency)}</span>
+                        </div>
+                        <div className="bg-background-subtle p-3 rounded-xl">
+                          <span className="text-[9px] font-bold text-foreground-muted uppercase tracking-wider block">Actual Spent</span>
+                          <span className="text-xs font-extrabold text-foreground">{formatAmount(data.spent, activeCurrency)}</span>
+                        </div>
+                        <div className="bg-background-subtle p-3 rounded-xl">
+                          <span className="text-[9px] font-bold text-foreground-muted uppercase tracking-wider block">Utilized %</span>
+                          <span className="text-xs font-extrabold text-foreground">{data.usage}%</span>
+                        </div>
+                        <div className="bg-background-subtle p-3 rounded-xl flex items-center justify-between">
+                          <div>
+                            <span className="text-[9px] font-bold text-foreground-muted uppercase tracking-wider block">Discipline</span>
+                            <span className={`text-[10px] font-black uppercase ${data.status === "Over Budget" ? "text-error" : data.status === "Near Limit" ? "text-brand" : "text-success"}`}>
+                              {data.status}
+                            </span>
+                          </div>
+                          {data.status === "On Track" ? (
+                            <CheckCircle className="w-4 h-4 text-success shrink-0" />
+                          ) : (
+                            <AlertTriangle className={`w-4 h-4 shrink-0 ${data.status === "Near Limit" ? "text-brand" : "text-error"}`} />
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Warnings */}
+                      {data.allocatedBudget > data.budget ? (
+                        <div className="bg-error-light/50 border border-error-light text-error p-3 rounded-xl flex items-center gap-2 text-xs font-semibold">
+                          <AlertTriangle className="w-4 h-4 shrink-0" />
+                          <span>
+                            Category budgets for this bucket exceed your target limit of {formatAmount(data.budget, activeCurrency)} by {formatAmount(data.allocatedBudget - data.budget, activeCurrency)}. Adjust category limits.
+                          </span>
+                        </div>
+                      ) : data.allocatedBudget <= data.budget && data.allocatedBudget > 0 ? (
+                        <div className="bg-success-light/40 border border-success-light text-success p-3 rounded-xl flex items-center gap-2 text-xs font-semibold">
+                          <ShieldCheck className="w-4 h-4 shrink-0" />
+                          <span>
+                            Category budgets align with limit. Allocated {formatAmount(data.allocatedBudget, activeCurrency)} of your {formatAmount(data.budget, activeCurrency)} target ({formatAmount(data.budget - data.allocatedBudget, activeCurrency)} unallocated).
+                          </span>
+                        </div>
+                      ) : null}
+
+                      {/* Progress bar */}
+                      <div className="w-full bg-secondary h-2.5 rounded-full overflow-hidden relative shadow-inner">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${getProgressColor(data.status)}`}
+                          style={{ width: `${Math.min(data.usage, 100)}%` }}
+                        />
+                      </div>
+
+                      {/* Itemized transactions */}
+                      <div className="space-y-2 pt-2">
+                        <h4 className="text-xs font-black text-foreground-secondary uppercase tracking-wider">Itemized Expenses</h4>
+                        {txs.length > 0 ? (
+                          <div className="border border-border rounded-xl divide-y divide-border overflow-hidden">
+                            {txs.map((tx) => (
+                              <div key={tx.id} className="flex justify-between items-center p-3 hover:bg-secondary/40 transition-colors">
+                                <div className="space-y-0.5">
+                                  <span className="text-xs font-extrabold text-foreground block">{tx.description || tx.category}</span>
+                                  <div className="flex items-center gap-2 text-[10px] font-semibold text-foreground-muted">
+                                    <span className="bg-secondary px-1.5 py-0.5 rounded-md text-[9px] font-bold text-foreground-secondary">{tx.category}</span>
+                                    <span>{new Date(tx.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                                  </div>
+                                </div>
+                                <span className="text-xs font-black text-foreground">{formatAmount(tx.amount, activeCurrency)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-6 text-center text-xs font-semibold text-foreground-muted bg-background-subtle rounded-xl border border-dashed border-border">
+                            No expenses logged for {title} in this month.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ────────────────── TAB 2: CATEGORY BUDGETS VIEW ────────────────── */}
+      {activeTab === "categories" && (
+        <section className="space-y-4 animate-in fade-in duration-200">
+          {categorySummaries.map((summary) => {
+            const Icon = summary.icon;
+            const hasLimit = summary.limit > 0;
+            const pct = hasLimit ? Math.min(Math.round((summary.spent / summary.limit) * 100), 200) : 0;
+            const isOver = hasLimit && summary.spent >= summary.limit;
+            const isWarning = hasLimit && summary.spent / summary.limit >= 0.8 && !isOver;
+
+            return (
+              <div
+                key={summary.id}
+                className={`bg-card border p-5 rounded-2xl shadow-sm space-y-4 transition-all hover:shadow-md ${getCardBorderColor(
+                  summary.spent,
+                  summary.limit
+                )}`}
+              >
+                {/* Row Header */}
+                <div className="flex justify-between items-start gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center border border-border shrink-0 ${
+                      isOver 
+                        ? "bg-error-light text-error" 
+                        : isWarning 
+                          ? "bg-warning-light text-brand"
+                          : "bg-primary-lighter text-primary"
+                    }`}>
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-foreground text-sm">{summary.name}</h3>
+                      <span className="text-[10px] font-bold text-foreground-secondary tracking-wide uppercase">
+                        {hasLimit ? `${t('budgets.budget')}: ${formatAmount(summary.limit, activeCurrency)}` : t('budgets.noBudgetSet')}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Spent calculations */}
+                  <div className="text-right space-y-0.5">
+                    <span className={`text-base font-black tracking-tight ${
+                      isOver ? "text-error" : isWarning ? "text-brand" : "text-foreground"
+                    }`}>
+                      {formatAmount(summary.spent, activeCurrency)}
+                    </span>
+                    <span className="text-[10px] font-semibold text-foreground-muted block">
+                      {hasLimit ? `${pct}% ${t('budgets.consumed')}` : t('budgets.tapToSetCap')}
                     </span>
                   </div>
                 </div>
 
-                {/* Spent calculations */}
-                <div className="text-right space-y-0.5">
-                  <span className={`text-base font-black tracking-tight ${
-                    isOver ? "text-error" : isWarning ? "text-brand" : "text-foreground"
-                  }`}>
-                    {formatAmount(summary.spent, activeCurrency)}
-                  </span>
-                  <span className="text-[10px] font-semibold text-foreground-muted block">
-                    {hasLimit ? `${pct}% ${t('budgets.consumed')}` : t('budgets.tapToSetCap')}
-                  </span>
+                {/* Progress Bar Meter */}
+                <div className="space-y-1">
+                  <div className="w-full bg-secondary h-3 rounded-full overflow-hidden relative shadow-inner">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        isOver ? "bg-error" : isWarning ? "bg-warning" : "bg-primary"
+                      }`}
+                      style={{ width: `${Math.min(pct, 100)}%` }}
+                    />
+                  </div>
+
+                  {/* Exceeded / Approaching alert labels */}
+                  {!hasLimit ? (
+                    <span className="text-[10px] font-bold text-foreground-muted flex items-center gap-1 mt-1">
+                      <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                      {t('budgets.noLimitConfigured', { amount: formatAmount(summary.spent, activeCurrency) })}
+                    </span>
+                  ) : isOver ? (
+                    <span className="text-[10px] font-bold text-error flex items-center gap-1 mt-1">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      {t('budgets.budgetBreached', { amount: formatAmount(summary.spent - summary.limit, activeCurrency) })}
+                    </span>
+                  ) : isWarning ? (
+                    <span className="text-[10px] font-bold text-brand flex items-center gap-1 mt-1">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      {t('budgets.budgetWarning')}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold text-primary flex items-center gap-1 mt-1">
+                      <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                      {t('budgets.optimalStatus')}
+                    </span>
+                  )}
                 </div>
               </div>
-
-              {/* Progress Bar Meter */}
-              <div className="space-y-1">
-                <div className="w-full bg-secondary h-3 rounded-full overflow-hidden relative shadow-inner">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${getProgressColor(
-                      summary.spent,
-                      summary.limit
-                    )}`}
-                    style={{ width: `${Math.min(pct, 100)}%` }}
-                  />
-                </div>
-
-                {/* Exceeded / Approaching alert labels */}
-                {!hasLimit ? (
-                  <span className="text-[10px] font-bold text-foreground-muted flex items-center gap-1 mt-1">
-                    <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                    {t('budgets.noLimitConfigured', { amount: formatAmount(summary.spent, activeCurrency) })}
-                  </span>
-                ) : isOver ? (
-                  <span className="text-[10px] font-bold text-error flex items-center gap-1 mt-1">
-                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                    {t('budgets.budgetBreached', { amount: formatAmount(summary.spent - summary.limit, activeCurrency) })}
-                  </span>
-                ) : isWarning ? (
-                  <span className="text-[10px] font-bold text-brand flex items-center gap-1 mt-1">
-                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                    {t('budgets.budgetWarning')}
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-bold text-primary flex items-center gap-1 mt-1">
-                    <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                    {t('budgets.optimalStatus')}
-                  </span>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </section>
+            );
+          })}
+        </section>
+      )}
 
       {/* Set Budget Limit Overlay Modal */}
       <SetBudgetModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onSuccess={loadBudgetData}
+        onSuccess={() => {
+          // Trigger data reload by triggering datastore change event
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new Event("datastore:change"));
+          }
+        }}
       />
     </div>
   );

@@ -37,6 +37,7 @@
     "transactions": "Transactions",
     "calendar": "Calendar",
     "budgets": "Budgets",
+    "moneyRule": "Budgeting Rule",
     "savingsGoals": "Savings Goals",
     "notebooks": "Notebooks",
     "billSplitter": "Bill Splitter",
@@ -242,6 +243,22 @@
     "budgetBreached": "Budget ceiling breached by {amount}!",
     "budgetWarning": "Warning: Budget utilization is above 80% thresholds.",
     "optimalStatus": "Optimal category balance status."
+  },
+  "moneyRule": {
+    "cardTitle": "Budgeting Rule",
+    "monthlyAllocation": "Monthly Allocation",
+    "setIncomePrompt": "Set your monthly income to automatically track your budget allocations.",
+    "setIncomeBtn": "Set Income",
+    "needs": "Needs (50%)",
+    "wants": "Wants (30%)",
+    "investments": "Investments (20%)",
+    "overBudget": "Over Budget",
+    "nearLimit": "Near Limit",
+    "onTrack": "On Track",
+    "title": "Budgeting Rule",
+    "subtitle": "Automatically split monthly income into Needs, Wants, and Investments allocations.",
+    "takeHomeIncome": "Monthly Take-Home Income",
+    "activeMonth": "Calculation Period"
   },
   "savings": {
     "savingsObjectives": "Savings Objectives",

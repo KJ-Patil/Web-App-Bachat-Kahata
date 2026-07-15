@@ -37,6 +37,7 @@
     "transactions": "व्यवहार",
     "calendar": "दिनदर्शिका",
     "budgets": "बजेट",
+    "moneyRule": "बजेट नियम",
     "savingsGoals": "बचत ध्येये",
     "notebooks": "वही",
     "billSplitter": "बिल विभाजन",
@@ -226,6 +227,22 @@
     "budgetBreached": "बजेट मर्यादा {amount} रुपयांनी ओलांडली गेली आहे!",
     "budgetWarning": "चेतावणी: बजेटचा ८०% पेक्षा जास्त वापर झाला आहे.",
     "optimalStatus": "उत्कृष्ट श्रेणी संतुलन स्थिती."
+  },
+  "moneyRule": {
+    "cardTitle": "बजेट नियम",
+    "monthlyAllocation": "मासिक वाटप",
+    "setIncomePrompt": "बजेट वाटप स्वयंचलितपणे ट्रॅक करण्यासाठी आपले मासिक उत्पन्न प्रविष्ट करा.",
+    "setIncomeBtn": "उत्पन्न प्रविष्ट करा",
+    "needs": "गरजा (50%)",
+    "wants": "इच्छा (30%)",
+    "investments": "गुंतवणूक (20%)",
+    "overBudget": "बजेट बाहेर",
+    "nearLimit": "मर्यादेजवळ",
+    "onTrack": "ट्रॅकवर",
+    "title": "बजेट नियम",
+    "subtitle": "मासिक उत्पन्न गरजा, इच्छा आणि गुंतवणूक वाटप मध्ये स्वयंचलितपणे विभाजित करा.",
+    "takeHomeIncome": "मासिक टेक-होम उत्पन्न",
+    "activeMonth": "गणना कालावधी"
   },
   "savings": {
     "savingsObjectives": "बचतीची उद्दिष्टे",

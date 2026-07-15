@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { Home, Settings, LogOut, Plus, Globe, List, BookOpen, BarChart3, Download, CreditCard, Mic, Users, Activity, SlidersHorizontal, Receipt, BrainCircuit, GraduationCap, Target, PiggyBank, Sparkles, Flame, Repeat, ArrowLeftRight, CalendarDays } from "lucide-react";
+import { Home, Settings, LogOut, Plus, Globe, List, BookOpen, BarChart3, Download, CreditCard, Mic, Users, Activity, SlidersHorizontal, Receipt, BrainCircuit, GraduationCap, Target, PiggyBank, Sparkles, Flame, Repeat, ArrowLeftRight, CalendarDays, PieChart } from "lucide-react";
 import { useLazyCatchUpSync } from "@/core/store/CatchUpSync";
 import { clearFinancialData, clearLocalCache } from "@/core/store/dataStore";
 import { auth } from "@/config/firebase";
