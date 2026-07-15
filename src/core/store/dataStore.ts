@@ -425,8 +425,11 @@ export async function unlockDataStore(pin: string): Promise<void> {
   emitChange();
 
   if (currentUid) {
+    // Capture the uid first: stopSync() clears currentUid, so reading it after
+    // would pass null into startSync (→ Firestore doc() crash on a null path).
+    const uid = currentUid;
     stopSync();
-    startSync(currentUid);
+    startSync(uid);
   }
 }
 

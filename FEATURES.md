@@ -1,224 +1,238 @@
-# Bachat Khata — Features & Functions Reference
+# Bachat Khata — Complete Features & Functions Reference
 
-**Bachat Khata – Personal Wealth Manager** is a Next.js personal finance app.
-Data lives in `localStorage` as an offline-first cache and is mirrored to
-**Firebase Auth + Firestore** for per-user cloud sync. No mock/seed data is
-ever fabricated — every KPI and chart is *derived* from the real transactions
-a user enters.
+> An exhaustive catalog of **every feature the app offers** and **every function in the codebase** — down to the small helpers. Generated from a full read of `src/`. For a build-from-scratch spec see [PROJECT_BLUEPRINT.md](PROJECT_BLUEPRINT.md).
+
+**Bachat Khata – Personal Wealth Manager** is an offline-first personal-finance PWA: local-first (`localStorage`) with per-user Firebase Firestore cloud sync, encrypted at rest, Indian-first (INR lakh/crore, bank-SMS parsing, Hindi/Hinglish voice logging, CIBIL, khata ledger, WhatsApp reminders). No mock/seed data is ever fabricated — every KPI and chart is *derived* from the real transactions a user enters.
 
 ---
 
-## Table of Contents
-1. [Authentication & Security](#1-authentication--security)
-2. [Core Data Layer](#2-core-data-layer-dataStorets)
-3. [Dashboard & Tracking](#3-dashboard--tracking)
-4. [Financial Engines & Insights](#4-financial-engines--insights)
-5. [Debt & Loans](#5-debt--loans)
-6. [Ledger & Family Wallet](#6-ledger--family-wallet)
-7. [Automation & Input](#7-automation--input)
-8. [Education & Settings](#8-education--settings)
-9. [Utilities & Export](#9-utilities--export)
+## Part A — Feature Catalog (everything the user can do)
+
+### 1. Authentication & Account
+- **Splash screen** with animated logo + auth-aware redirect (login / pin-lock / home).
+- **Email + password login** (Firebase Auth).
+- **Google sign-in** (popup).
+- **Phone OTP login** (invisible reCAPTCHA + SMS code, E.164 validated).
+- **Registration** with display name, email/password, and avatar upload (local blob + simulated progress); writes a Firestore user profile.
+- **Sign out** and **"Switch Account"** (clears the local session).
+- **"Sign Out Everywhere"** from settings.
+
+### 2. Security & Privacy
+- **4-digit PIN lock** with on-screen keypad — setup, verify, and change flows.
+- **PIN hashing** (SHA-256, salted `v2$` format; legacy unsalted hashes auto-upgraded on next verify).
+- **Biometric unlock hook** (WebAuthn platform-authenticator check + assertion).
+- **Forgot-PIN flow** verifying the account owner by email.
+- **Auto-lock** after 60s in the background (Page Visibility API).
+- **Encryption at rest** — sensitive local data is AES-GCM encrypted with a PIN-derived key; legacy plaintext is migrated to ciphertext on unlock.
+
+### 3. Data, Sync & Backup
+- **Local-first storage** — instant, fully offline via `localStorage`.
+- **Per-user cloud sync** to Firestore (`users/{uid}/appData/{key}`), live via `onSnapshot`, across devices/tabs.
+- **Data-loss guard** — a stale/empty cloud snapshot can never clobber populated local data; local is pushed up to reconcile instead.
+- **Offline cache** (Firestore `persistentLocalCache` + multi-tab manager).
+- **Cloud backup & restore** — create timestamped labeled snapshots, list, restore, and delete them.
+- **Weekly lazy "catch-up" recompute** of health score + insights (runs once per 7-day window).
+- **Clear all financial data** and full local wipe (multi-stage confirm, optional email-code verification).
+
+### 4. Transactions
+- **Add transaction** (expense/income, category grid, amount, description) via modal.
+- **Live transactions list** with search, type tabs (all/income/expense), grouped Today / Yesterday / Previous Weeks.
+- **Inline edit** (amount + description) and **inline delete** with confirm.
+- **Budget-threshold alert** — an expense that pushes a category to ≥80% of its budget writes a notification + inline warning.
+- **Anomaly detection** — flags an amount >2.5× the category's rolling average.
+
+### 5. Automated Entry
+- **Bank SMS paste → transaction** — parses HDFC, SBI, ICICI, Axis, Kotak, UPI (GPay/PhonePe/Paytm/BHIM) and a generic "Bank Alert" fallback; edit before saving.
+- **Voice logging** (Web Speech API) — Hindi/Hinglish/Devanagari; parses amount, type, category; runs anomaly check before saving.
+- **Floating calculator** — global arithmetic calculator (Shunting-Yard evaluator) for quick math during entry.
+
+### 6. Budgets
+- **Monthly budgets per category** with a month switcher (prev/next).
+- **Progress bars** comparing real spend vs limit, color-coded (≥100% error, ≥80% warning).
+- **Set/adjust budget** modal (syncs through the store).
+
+### 7. Savings Goals
+- **Create goals** (name, target, deadline).
+- **Radial % progress ring**, target/deadline display, **required monthly deposit** calculation.
+- **Log deposit** (increments goal + logs an Investment transaction).
+- **Completed-goal** state.
+
+### 8. Ledger / Khata (Notebook)
+- **Customer & supplier accounts** ("owes me" / "I owe") with phone numbers.
+- **Receivable / Payable / Net Position** summary.
+- **Filter tabs** (all/credit/debit/settled) + search.
+- **"You Gave" / "You Got"** quick entries (mirrored into transactions under a `Ledger` category).
+- **Running-balance history** with per-entry delete (also removes the linked transaction).
+- **WhatsApp / SMS payment reminders** per customer, with tone (friendly/formal/urgent) and language (EN/HI/MR) templates.
+
+### 9. Family Wallet
+- **Create a shared group** (random 6-digit code) or **join by code**.
+- **Shared pool balance** with optional **spending limit** + over-limit alert.
+- **Group expense claims** and collaborative expense history.
+
+### 10. Bill Splitter
+- **Add shared expenses** (equal split or assign-to-one), define people + mobile numbers, pick "you are".
+- **Optimized settlements** (greedy debt simplification) with WhatsApp request links.
+- **Your summary** (who owes you / you owe) and net balances. Local-only (not persisted).
+
+### 11. Loans & EMI
+- **Add loans** (lender presets, principal, rate, tenure, months paid, start date) with live amortization preview.
+- **EMI tracker** — active loans, monthly outflow, outstanding, total interest; per-loan card with progress, expandable breakdown, delete.
+- **Reducing-balance EMI + amortization** math (payable, interest, outstanding, completion date).
+
+### 12. Subscriptions
+- **Auto-detected recurring charges** from transaction history (median amount, next-charge estimate, "possibly unused" after ~45 days).
+- **Manually added subscriptions**.
+- **Summary KPIs** (detected, monthly cost, annual cost, possibly-unused count).
+
+### 13. Calendar
+- **Month grid** of upcoming financial obligations (loan EMIs + subscription charges) projected forward ~12 months.
+- **Day-detail page** listing that day's due items.
+
+### 14. Insights & Scores
+- **Financial Health Score (0–100)** — weighted (savings rate, budget discipline, vault velocity, debt-to-income, spending stability) with gauge + "AI prescriptions".
+- **CIBIL simulator** — sliders (payment history, utilization, age, mix, inquiries) → 300–900 score with animated counter and band label. Educational.
+- **Safe-to-Spend** — daily spendable number after month expenses + savings reserve.
+- **Mood insights** — log daily mood, correlate spend/income with mood, variance alert.
+- **Streaks & achievements** — logging streaks + 10 unlockable badges.
+- **What-If simulator** — SIP future-value projection (monthly compounding annuity-due) with chart.
+
+### 15. Analytics & Reporting
+- **Home dashboard** — greeting, balance card, safe-to-spend, 4-stat grid, 7-day balance + monthly category charts, notifications bell.
+- **Analytics** — KPI cards with MoM change, income-vs-expense area chart, allocation pie, comparative bars, top-5 category rankers.
+- **Month-vs-month comparison** — headline totals, per-category deltas, grouped bars.
+- **Export** — date-range + data-type + type filters → **CSV**, **Excel (.xlsx)**, or **PDF** report.
+
+### 16. Learning
+- **Academy** — lessons (`lessons.json`) → per-question quiz → results; 100% unlocks a reward badge; progress tracked.
+- **Help** page and **About** page.
+
+### 17. Personalization & System
+- **Multi-currency** (INR/USD/EUR/AUD) with searchable picker; **live exchange rates** (open.er-api.com, cached 12h, offline fallback), Indian lakh/crore layout for INR.
+- **Language preference** (English/Hindi/Marathi with i18n dictionaries; full Indian-languages dataset for the picker).
+- **Category manager** — active vs archived categories, custom colors/icons, archive/restore.
+- **Notifications center** — severity icons, mark-all-read, delete per item.
+- **Flash reminder modal**, **top progress loader**, **toast notifications**.
+- **PWA** — manifest + service worker (production only).
 
 ---
 
-## 1. Authentication & Security
+## Part B — Function Reference (every exported function/module)
 
-| Feature | File | Summary |
-|---|---|---|
-| **Login** | `src/app/(auth)/login/page.tsx` | Email/password sign-in plus Google sign-in popup. |
-| **Register** | `src/app/(auth)/register/page.tsx` | Creates a new account and sets the display name. |
-| **PIN Lock** | `src/app/(auth)/pin-lock/page.tsx` | App-level PIN gate for quick re-entry without full logout. |
-| **Phone Input** | `src/components/inputs/PhoneNumberInput.tsx` | Phone field with country-code selector (`countries.ts`). |
+### `core/store/dataStore.ts` — central data layer
+- `KEYS` — storage-key constants.
+- `clearFinancialData()` — wipe all synced financial data (local + cloud) and local-only caches.
+- `clearLocalCache()` — clear the in-memory decrypted cache.
+- `emitChange()` — dispatch the `datastore:change` event for live updates.
+- `generateId()` — short random id.
+- `unlockDataStore(pin)` — derive AES key, load/migrate local data, start sync.
+- `lockDataStore()` — forget key + cache, stop sync.
+- `getTransactions` / `setTransactions` / `addTransaction` / `updateTransaction` / `deleteTransaction`.
+- `getSavingsGoals` / `setSavingsGoals`.
+- `getLoans` / `setLoans`.
+- `getBudgets` / `setBudgets`.
+- `getLedgerCustomers` / `setLedgerCustomers`.
+- `getFamilyGroups` / `setFamilyGroups` / `getFamilyExpenses` / `setFamilyExpenses`.
+- `computeGroupPoolBalance(expenses)` — net family-pool balance.
+- `getManualSubscriptions` / `setManualSubscriptions` / `addManualSubscription` / `deleteManualSubscription`.
+- **Selectors:** `getTotals`, `getMonthTotals`, `getCategoryBreakdown`, `getDailyBalanceTrend`, `getMonthlyTrend`, `getSavingsRate`, `getTotalSaved`, `getTotalDebt`.
+- **Hooks (live):** `useTransactions`, `useBudgets`, `useLedgerCustomers`, `useLoans`, `useSavingsGoals`, `useFamilyGroups`, `useManualSubscriptions`, `useFamilyExpenses`.
+- **Cloud backup:** `getCurrentUid`, `createCloudBackup`, `listCloudBackups`, `deleteCloudBackup`, `restoreCloudBackup`.
 
-**Functions / APIs used**
-- `signInWithEmailAndPassword` — authenticate existing users by email + password.
-- `signInWithPopup` + `GoogleAuthProvider` — one-click Google OAuth login.
-- `createUserWithEmailAndPassword` — register a brand-new account.
-- `updateProfile` — attach a display name to the new user.
+### `core/store/encryption.ts` — at-rest encryption
+- `deriveKeyFromPin(pin)` — PBKDF2 → AES-GCM `CryptoKey`.
+- `isEncrypted(raw)` — detect ciphertext format.
+- `encryptValue(key, value)` / `decryptValue(key, raw)`.
 
----
+### `core/store/CatchUpSync.ts` — weekly recompute
+- `runLazyCatchUpSync()` — recompute health + weekly insights once per 7-day window (else cached).
+- `useLazyCatchUpSync()` — run it on mount.
 
-## 2. Core Data Layer (`dataStore.ts`)
+### `core/math/HealthEngine.ts`
+- `computeHealthScore(income, expenses, savings, debtPayments, budgetAdherence)` → `HealthMetrics` (savings rate 30%, budget discipline 25%, vault velocity 20%, debt-to-income 15%, stability 10%).
+- `getHealthRecommendations(metrics)` → advice strings from weak sub-scores.
 
-The single source of truth. localStorage = instant offline cache; Firestore =
-cloud mirror at `users/{uid}/appData/{key}` (one doc per collection).
+### `core/math/DebtSimplifier.ts`
+- `calculateBalances(expenses)` → net balance per person (+owed / −owes).
+- `simplifyDebts(expenses)` → minimal settlement transfers (greedy).
 
-### Data models (interfaces)
-- `Transaction` — id, amount, type (`income`/`expense`), category, description, date.
-- `SavingsGoal` — name, target, current, deadline.
-- `BudgetMap` — category → monthly limit.
-- `LoanRecord` — lender, principal, interest rate, tenure, months paid.
-- `LedgerEntry` / `LedgerCustomer` — gave/got entries and customer/supplier balances.
-- `FamilyGroup` / `GroupExpense` — shared wallet groups and their expenses.
+### `core/math/mathEvaluator.ts`
+- `evaluateArithmetic(expr)` — safe Shunting-Yard arithmetic evaluator (+ − × ÷, parentheses, unary minus).
 
-### Storage & sync functions
-- `readJSON` / `writeJSON` — typed localStorage get/set; writes also push to cloud and emit a change event.
-- `pushToFirestore` — mirrors a local write up to the signed-in user's Firestore doc.
-- `applyRemote` / `startSync` / `stopSync` — stream cloud changes down; start/stop on sign in/out.
-- `isEmptyValue` — guard so an empty/stale cloud snapshot never wipes good local data.
-- `emitChange` — broadcasts `datastore:change` so all mounted pages recompute live in-tab.
-- `generateId` — short random id for new records.
-- `clearFinancialData` — wipe all financial data (local + cloud) while staying logged in.
+### `core/insights/safeToSpend.ts`
+- `computeSafeToSpend(txs, budgets, goals, today?)` → daily safe-to-spend result.
 
-### CRUD helpers
-- **Transactions:** `getTransactions`, `setTransactions`, `addTransaction`, `updateTransaction`, `deleteTransaction`.
-- **Savings:** `getSavingsGoals`, `setSavingsGoals`.
-- **Loans:** `getLoans`, `setLoans`.
-- **Budgets:** `getBudgets`, `setBudgets`.
-- **Ledger:** `getLedgerCustomers`, `setLedgerCustomers`.
-- **Family:** `getFamilyGroups`, `setFamilyGroups`, `getFamilyExpenses`, `setFamilyExpenses`.
+### `core/insights/subscriptions.ts`
+- `detectSubscriptions(txs, minOccurrences=2)` → recurring charges (median amount, next-charge estimate, possibly-unused flag).
+- `summarizeSubscriptions(subs)` → monthly/annual totals + counts.
 
-### Derived selectors (computed from real data)
-- `getTotals` — lifetime income / expense / net balance.
-- `getMonthTotals` — totals for a single month (0 = current, -1 = last).
-- `getCategoryBreakdown` — spend/income grouped by category, sorted, with % share.
-- `getDailyBalanceTrend` — running balance over the last N days.
-- `getMonthlyTrend` — income vs expense per month for the last N months.
-- `getSavingsRate` — (income − expense) / income, as a %.
-- `getTotalSaved` — sum of all savings-goal balances.
-- `getTotalDebt` — best-effort outstanding loan total.
+### `core/insights/streaks.ts`
+- `computeStreaksAndBadges(txs, budgets, goals, today?)` → current/longest streak, active days, and 10 badges with progress.
 
-### React hooks (live-updating subscriptions)
-`useTransactions`, `useBudgets`, `useLedgerCustomers`, `useLoans`,
-`useSavingsGoals`, `useFamilyGroups`, `useFamilyExpenses` — each re-renders on
-in-tab (`datastore:change`) and cross-tab (`storage`) changes.
+### `core/insights/whatIf.ts`
+- `simulateWhatIf(input)` → SIP future value, invested, returns, per-year timeline.
 
----
+### `core/automation/SmsParser.ts`
+- `parseSmsMessage(raw)` → parsed transaction | null (bank-specific + UPI + fallback regex).
+- `parseSmsMessages(messages[])` → batch parse (skips unrecognized).
 
-## 3. Dashboard & Tracking
+### `core/voice/VoiceParser.ts`
+- `parseVoiceInput(text)` → amount/type/category/description from Hindi/Hinglish/Devanagari speech.
 
-| Feature | File | Summary |
-|---|---|---|
-| **Home Dashboard** | `src/app/(dashboard)/home/page.tsx` | Headline KPIs, balance, quick actions, safe-to-spend card. |
-| **Transactions** | `src/app/(dashboard)/transactions/page.tsx` | Full ledger with add / edit / delete. |
-| **Analytics** | `src/app/(dashboard)/analytics/page.tsx` | Recharts visualizations of category breakdown and trends. |
-| **Comparison** | `src/app/(dashboard)/comparison/page.tsx` | Month-vs-month per-category deltas and % change. |
-| **Budgets** | `src/app/(dashboard)/budgets/page.tsx` | Per-category monthly limits + utilization (Set Budget modal). |
-| **Savings Goals** | `src/app/(dashboard)/savings/page.tsx` | Goal progress toward targets/deadlines (Add Goal modal). |
-| **Notifications** | `src/app/(dashboard)/notifications/page.tsx` | In-app notification feed. |
+### `core/utils/AnomalyRadar.ts`
+- `checkAnomaly(amount, category, transactions)` → warning string | null (>2.5× rolling average, needs ≥3 samples).
 
----
+### `core/utils/currencyManager.ts`
+- `BASE_CURRENCY` constant (INR).
+- `getExchangeRate(code)` — synchronous INR→code rate (cache → fallback → 1).
+- `refreshExchangeRates(force?)` — fetch + cache live rates (12h TTL, offline-safe).
+- `formatAmount(amount, code, opts?)` — Indian lakh/crore for INR, `Intl.NumberFormat` otherwise.
+- `getCurrencySymbol`, `getCurrencyInfo`, `getAllCurrencies`, `convertAmount`.
 
-## 4. Financial Engines & Insights
+### `core/utils/reminderService.ts`
+- `generateReminderMessage(...)` — templated reminder (credit/debit/settlement × EN/HI/MR × friendly/formal/urgent).
+- `normalizePhoneNumber(phone)`, `getWhatsAppLink(phone, msg)`, `getSmsLink(phone, msg)`.
+- `sendTwilioSmsSimulated(...)` — simulated SMS send.
 
-### Health Score — `HealthEngine.ts` (page: `health-score`)
-Computes a unified **0–100 financial health rating**.
-- `computeHealthScore` — weighted blend: Savings Rate 30%, Budget Discipline 25%, Vault Velocity 20%, Debt-to-Income 15%, Spending Stability 10%.
-- `getHealthRecommendations` — turns weak sub-scores into actionable advice.
+### `core/utils/dueDates.ts`
+- `computeDueDates(...)` — map of day-key → upcoming EMI + subscription obligations (~12 months).
 
-### Safe-to-Spend — `safeToSpend.ts` (component: `SafeToSpendCard.tsx`)
-The "anti-budget" single number — how much you can safely spend per day.
-- `computeSafeToSpend` — income (or budget ceiling) − month's spend − savings reserve, divided by days left.
-- Internal: `daysLeftInMonth`, `monthlySavingsReserve`.
+### `core/utils/calendar.ts`
+- `WEEKDAY_LABELS`, `MONTH_LABELS` constants.
+- `toDateKey(d)`, `isSameDay(a, b)`, `parseDateKey(key)`, `buildMonthGrid(year, month)`.
 
-### Subscription Tracker — `subscriptions.ts` (page: `subscriptions`)
-Detects recurring payments purely from the transaction ledger.
-- `detectSubscriptions` — groups by merchant, flags charges recurring across ≥2 months, estimates next charge, marks `possiblyUnused` (no charge in ~45 days).
-- `summarizeSubscriptions` — monthly/annual totals, counts, unused count.
-- Internal: `normalizeKey`, `monthBucket`, `median`.
+### `core/utils/categories.ts`
+- `resolveCategoryIcon(iconName)` → Lucide icon.
+- `getStoredCategories()`, `getActiveCategories(type?)`.
 
-### What-If Simulator — `whatIf.ts` (page: `what-if`)
-Pure future-value math for SIP-style investing.
-- `simulateWhatIf` — projects future value of a monthly contribution + lump sum compounded monthly, returning total invested, returns, and a per-year timeline.
+### `core/utils/countries.ts`
+- `getCountryByIso`, `getCountryByCurrency`, `digitsOnly`, `validatePhone`, `toFullNumber` (+ `COUNTRIES` dataset).
 
-### Streaks & Badges — `streaks.ts` (page: `streaks`)
-Gamifies logging activity.
-- `computeStreaksAndBadges` — current/longest logging streak, active days, and 10 achievement badges (First Step, On Fire, Smart Saver, Goal Crusher, Centurion, etc.) with progress.
-- Internal: `dayKey`, `todayKey`, `computeStreaks`, `pct`.
+### `core/utils/languages.ts`
+- `DEFAULT_LANGUAGE`, `INDIAN_LANGUAGES` dataset, `getLanguage(code)`.
 
-### Anomaly Radar — `AnomalyRadar.ts`
-- `checkAnomaly` — flags a spend that exceeds **2.5×** the category's rolling average (needs ≥3 prior samples).
+### `core/utils/csvExporter.ts`
+- `exportTransactionsCsv`, `exportBudgetsCsv`, `exportSavingsCsv` (RFC-4180, UTF-8 BOM).
 
-### Catch-Up Sync — `CatchUpSync.ts`
-Weekly (7-day) lazy insights generator.
-- `runLazyCatchUpSync` — recomputes health score + weekly insights once per 7-day window, else returns cached.
-- `useLazyCatchUpSync` — hook to run it on layout mount.
-- Internal: `calculateFinancialHealthScore`, `generateWeeklyInsights`.
+### `core/utils/excelExporter.ts`
+- `exportWorkbookXlsx(...)` — multi-sheet `.xlsx` export.
 
-### Mood Insights — page: `mood-insights`
-Daily mood logging (Good/Okay/Stressed) correlated against spending, charted with Recharts.
+### `core/utils/pdfGenerator.ts`
+- `generatePdfReport(options)` — styled A4 HTML statement → print/PDF (download fallback).
 
-### CIBIL Simulator — page: `cibil-simulator`
-Simulates how actions affect an Indian CIBIL credit score.
+### `i18n/i18nContext.tsx`
+- `I18nProvider` + `useI18n()` — `t(key, vars?)` lookups, `locale`, `setLocale` (EN/HI/MR dictionaries with English fallback).
+
+### Components & Modals
+- **Modals:** `AddTransactionModal`, `AddGoalModal`, `AddCategoryModal`, `AddLoanModal`, `LogDepositModal`, `SetBudgetModal`, `CurrencyPickerSheet`, `LanguagePickerSheet`, `FlashReminderModal`.
+- **Inputs:** `PhoneNumberInput`, `GlobalFloatingCalculator`.
+- **Feature components:** `SafeToSpendCard`, `SmsPasteZone`, `VoiceLoggingModal`.
+- **Infrastructure:** `Providers` (app wrapper).
+
+### Pages (routes)
+- **Auth:** `/login`, `/register`, `/pin-lock`.
+- **Dashboard:** `/home`, `/transactions`, `/analytics`, `/comparison`, `/budgets`, `/savings`, `/ledger`, `/ledger/[id]`, `/family-wallet`, `/family-wallet/[groupId]`, `/emi-tracker`, `/health-score`, `/cibil-simulator`, `/academy`, `/mood-insights`, `/what-if`, `/subscriptions`, `/streaks`, `/bill-splitter`, `/calendar`, `/calendar/[date]`, `/notifications`, `/export`, `/help`, `/settings`, `/settings/categories`, `/settings/about`.
 
 ---
 
-## 5. Debt & Loans
-
-### EMI Tracker — page: `emi-tracker` (Add Loan modal)
-Tracks loans: principal, annual interest rate, tenure, months paid, start date.
-
-### Bill Splitter — `DebtSimplifier.ts` (page: `bill-splitter`)
-Splits group expenses and minimizes the number of repayments.
-- `calculateBalances` — net balance per person (positive = owed money, negative = owes).
-- `simplifyDebts` — greedy algorithm matching biggest debtors to biggest creditors to produce minimal settlements.
-
----
-
-## 6. Ledger & Family Wallet
-
-| Feature | File | Summary |
-|---|---|---|
-| **Ledger (Khata)** | `src/app/(dashboard)/ledger/page.tsx` | Customer/supplier credit book ("gave" / "got"). |
-| **Ledger Detail** | `src/app/(dashboard)/ledger/[id]/page.tsx` | Per-customer running balance + entry history. |
-| **Family Wallet** | `src/app/(dashboard)/family-wallet/page.tsx` | Shared groups with join codes & spending limits. |
-| **Family Group Detail** | `src/app/(dashboard)/family-wallet/[groupId]/page.tsx` | Group members, balances, and expenses. |
-| **Log Deposit Modal** | `src/components/modals/LogDepositModal.tsx` | Record a ledger payment in/out. |
-
-Ledger entries link to a transaction (`txId`) so dashboard totals stay in sync on add/delete.
-
----
-
-## 7. Automation & Input
-
-### Voice Logging — `VoiceParser.ts` (modal: `VoiceLoggingModal.tsx`)
-Converts spoken Hindi/Hinglish + Devanagari into a transaction.
-- `parseVoiceInput` — extracts amount (incl. number words like *paanch*, *hazaar*, *लाख*), type (income/expense keywords), and category (e.g. *khana* → Groceries), with sensible defaults.
-
-### SMS Parser — `SmsParser.ts` (component: `SmsPasteZone.tsx`)
-Extracts transactions from pasted Indian bank/UPI SMS alerts.
-- `parseSmsMessage` — bank-specific regex rules for HDFC, SBI, ICICI, Axis, Kotak, generic UPI (GPay/PhonePe/Paytm/BHIM), plus a fallback; detects debit vs credit and cleans the merchant name.
-- `parseSmsMessages` — batch-parse many messages, skipping unrecognized ones.
-- Internal: `cleanDescription`, `parseAmount`, `detectTypeFromKeywords`.
-
-### Add Transaction — modal: `AddTransactionModal.tsx`
-Manual entry form for income/expense transactions.
-
----
-
-## 8. Education & Settings
-
-| Feature | File | Summary |
-|---|---|---|
-| **Financial Academy** | `src/app/(dashboard)/academy/page.tsx` | Lessons with quizzes; earns badges/rewards, tracks completion in localStorage. |
-| **Settings** | `src/app/(dashboard)/settings/page.tsx` | App preferences, currency, data reset. |
-| **Category Manager** | `src/app/(dashboard)/settings/categories/page.tsx` | Add/manage spending categories (Add Category modal). |
-| **Currency Picker** | `src/components/modals/CurrencyPickerSheet.tsx` | Pick the active display currency. |
-
----
-
-## 9. Utilities & Export
-
-### Currency Manager — `currencyManager.ts`
-22 preset currencies with locale-aware formatting.
-- `formatAmount` — formats numbers per currency, with Indian lakh/crore grouping for INR and a manual fallback.
-- `getCurrencySymbol`, `getCurrencyInfo`, `getAllCurrencies` — currency metadata lookups.
-- `convertAmount` — convert between currencies via exchange rates.
-
-### CSV Export — `csvExporter.ts`
-RFC-4180-safe, UTF-8 (BOM) CSV downloads, fully client-side.
-- `exportTransactionsCsv`, `exportBudgetsCsv`, `exportSavingsCsv` — export each data type.
-- Internal: `escapeCsvCell`, `buildCsvContent`, `triggerDownload`, `dateTag`.
-
-### PDF Export — `pdfGenerator.ts`
-Generates PDF reports for transactions, budgets, and savings.
-
-### Export Hub — page: `export`
-UI to choose which data set to export (ledger / budgets / savings) as CSV or PDF.
-
-### Countries — `countries.ts`
-Country list + dial codes powering the phone-number input.
-
----
-
-*Generated as a reference snapshot of the current codebase.*
+*Generated from a full read of every source file in `src/`. Reflects the current codebase.*
