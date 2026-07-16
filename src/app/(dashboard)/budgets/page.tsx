@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Edit3, ShieldCheck, AlertTriangle, PieChart, Target, Settings2, Sliders, CheckCircle, Info, RefreshCw, AlertCircle, HelpCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Edit3, ShieldCheck, AlertTriangle, PieChart, Target, Settings2, Sliders, CheckCircle, Info, RefreshCw, AlertCircle, HelpCircle, ArrowLeftRight } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
 import SetBudgetModal from "@/components/modals/SetBudgetModal";
 import { getBudgets, getTransactions, useTransactions, useBudgets, useMonthlyIncome, useMoneyRuleSplit, setMonthlyIncome, setMoneyRuleSplit } from "@/core/store/dataStore";
 import { computeMoneyRule } from "@/core/insights/moneyRule";
 import { getBucketForCategory } from "@/core/utils/bucketConfig";
-import { getActiveCategories, resolveCategoryIcon } from "@/core/utils/categories";
+import { getActiveCategories, resolveCategoryIcon, getIncomeGroupForCategory } from "@/core/utils/categories";
 import { useTranslation } from "@/i18n/i18nContext";
 import { ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell, Tooltip } from "recharts";
 
@@ -20,7 +20,7 @@ interface CategorySummary {
 }
 
 export default function BudgetsPage() {
-  const [activeTab, setActiveTab] = useState<"rule" | "categories">("rule");
+  const [activeTab, setActiveTab] = useState<"rule" | "categories" | "spentVsInvested">("rule");
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [activeCurrency, setActiveCurrency] = useState("INR");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -195,6 +195,60 @@ export default function BudgetsPage() {
     return groups;
   }, [transactions, selectedDate]);
 
+  // ── Spent vs Invested rollups ────────────────────────────────────
+  // Spent = money consumed (Needs + Wants expenses); Invested = money put into
+  // investments (Investments-bucket expenses); Returns = investment INCOME
+  // received this month (Dividends, Interest, …). Totals come straight from the
+  // already-computed moneyRuleData / bucketTransactions; only Returns is new.
+  const spentVsInvested = useMemo(() => {
+    const spent = moneyRuleData.needs.spent + moneyRuleData.wants.spent;
+    const invested = moneyRuleData.investments.spent;
+
+    const targetMonth = selectedDate.getMonth();
+    const targetYear = selectedDate.getFullYear();
+    const returnsTxs = transactions.filter((tx) => {
+      if (tx.type !== "income") return false;
+      const d = new Date(tx.date);
+      return (
+        d.getMonth() === targetMonth &&
+        d.getFullYear() === targetYear &&
+        getIncomeGroupForCategory(tx.category) === "Investment"
+      );
+    });
+    const returns = returnsTxs.reduce((sum, t) => sum + t.amount, 0);
+
+    const outflow = spent + invested;
+    const investRate = outflow > 0 ? Math.round((invested / outflow) * 100) : 0;
+
+    // Roll a transaction list up to category totals, sorted high → low.
+    const rollup = (txs: typeof transactions) => {
+      const m = new Map<string, number>();
+      for (const t of txs) m.set(t.category, (m.get(t.category) || 0) + t.amount);
+      return [...m.entries()]
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value);
+    };
+
+    return {
+      spent,
+      invested,
+      returns,
+      investRate,
+      spentItems: rollup([...bucketTransactions.needs, ...bucketTransactions.wants]),
+      investedItems: rollup(bucketTransactions.investments),
+      returnsItems: rollup(returnsTxs),
+    };
+  }, [moneyRuleData, bucketTransactions, transactions, selectedDate]);
+
+  const spentInvestedDonut = useMemo(
+    () =>
+      [
+        { name: "Spent", value: spentVsInvested.spent, color: "#7c3aed" },
+        { name: "Invested", value: spentVsInvested.invested, color: "#10b981" },
+      ].filter((d) => d.value > 0),
+    [spentVsInvested]
+  );
+
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
       case "Over Budget":
@@ -247,11 +301,17 @@ export default function BudgetsPage() {
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div className="space-y-1">
           <h1 className="text-2xl font-extrabold text-foreground tracking-tight sm:text-3xl">
-            {activeTab === "rule" ? "Budgeting Rule" : t("budgets.categoryBudgets")}
+            {activeTab === "rule"
+              ? "Budgeting Rule"
+              : activeTab === "spentVsInvested"
+              ? "Spent vs Invested"
+              : t("budgets.categoryBudgets")}
           </h1>
           <p className="text-sm font-medium text-foreground-muted">
-            {activeTab === "rule" 
+            {activeTab === "rule"
               ? "Plan monthly spending limits based on customized split targets."
+              : activeTab === "spentVsInvested"
+              ? "See what you consumed versus what you invested this month."
               : t("budgets.establishBoundaries")}
           </p>
         </div>
@@ -290,6 +350,17 @@ export default function BudgetsPage() {
         >
           <Target className="w-4 h-4" />
           Category Limits
+        </button>
+        <button
+          onClick={() => setActiveTab("spentVsInvested")}
+          className={`py-3 px-6 text-sm font-bold border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
+            activeTab === "spentVsInvested"
+              ? "border-primary text-primary font-extrabold"
+              : "border-transparent text-foreground-muted hover:text-foreground hover:border-border"
+          }`}
+        >
+          <ArrowLeftRight className="w-4 h-4" />
+          Spent vs Invested
         </button>
       </div>
 
@@ -771,6 +842,136 @@ export default function BudgetsPage() {
             );
           })}
         </section>
+      )}
+
+      {/* ────────────────── TAB 3: SPENT VS INVESTED VIEW ────────────────── */}
+      {activeTab === "spentVsInvested" && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* KPI row */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              { label: "Total Spent", value: formatAmount(spentVsInvested.spent, activeCurrency), sub: "Needs + Wants", cls: "text-foreground" },
+              { label: "Total Invested", value: formatAmount(spentVsInvested.invested, activeCurrency), sub: "Money you put in", cls: "text-primary" },
+              { label: "Investment Returns", value: `+${formatAmount(spentVsInvested.returns, activeCurrency)}`, sub: "Income received", cls: "text-success" },
+              { label: "Invest Rate", value: `${spentVsInvested.investRate}%`, sub: "of your outflow", cls: "text-foreground" },
+            ].map((k) => (
+              <div key={k.label} className="bg-card border border-border p-4 rounded-2xl shadow-sm">
+                <span className="text-[10px] font-bold text-foreground-muted uppercase tracking-wider block">{k.label}</span>
+                <span className={`text-xl font-black tracking-tight ${k.cls}`}>{k.value}</span>
+                <span className="text-[10px] font-medium text-foreground-muted block mt-0.5">{k.sub}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Donut Column */}
+            <div className="lg:col-span-1 space-y-6">
+              <div className="bg-card border border-border p-6 rounded-2xl shadow-sm space-y-4">
+                <h3 className="text-sm font-extrabold text-foreground">Spent vs Invested</h3>
+
+                {spentInvestedDonut.length > 0 ? (
+                  <div className="h-60 w-full flex items-center justify-center relative">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie
+                          data={spentInvestedDonut}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={80}
+                          paddingAngle={4}
+                          dataKey="value"
+                        >
+                          {spentInvestedDonut.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value) => formatAmount(value as number, activeCurrency)} />
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+
+                    <div className="absolute flex flex-col items-center justify-center text-center">
+                      <span className="text-[10px] font-bold text-foreground-muted uppercase tracking-wider">Outflow</span>
+                      <span className="text-lg font-black text-foreground">
+                        {formatAmount(spentVsInvested.spent + spentVsInvested.invested, activeCurrency, { decimalPlaces: 0 })}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-60 flex flex-col items-center justify-center text-center p-4 bg-background-subtle rounded-xl border border-dashed border-border text-foreground-muted">
+                    <AlertCircle className="w-8 h-8 mb-2" />
+                    <span className="text-xs font-semibold">No outflow logged in {formatMonthLabel(selectedDate)}</span>
+                  </div>
+                )}
+
+                <div className="space-y-2 pt-2">
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded bg-[#7c3aed]" />
+                      <span className="text-foreground">Spent</span>
+                    </div>
+                    <span className="text-foreground-secondary">{formatAmount(spentVsInvested.spent, activeCurrency)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded bg-[#10b981]" />
+                      <span className="text-foreground">Invested</span>
+                    </div>
+                    <span className="text-foreground-secondary">{formatAmount(spentVsInvested.invested, activeCurrency)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Breakdown sections Column */}
+            <div className="lg:col-span-2 space-y-6">
+              {[
+                { key: "spent", title: "Spent", desc: "Money consumed on Needs & Wants this month", items: spentVsInvested.spentItems, total: spentVsInvested.spent, accent: "#7c3aed", incoming: false },
+                { key: "invested", title: "Where you invested", desc: "Money you put into investments (SIP, Stocks, Mutual Funds, …)", items: spentVsInvested.investedItems, total: spentVsInvested.invested, accent: "#10b981", incoming: false },
+                { key: "returns", title: "Investment Returns", desc: "Income received from investments — money coming in, not part of your spending plan", items: spentVsInvested.returnsItems, total: spentVsInvested.returns, accent: "#059669", incoming: true },
+              ].map((sec) => (
+                <div key={sec.key} className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+                  <div className="p-5 border-b border-border bg-background-subtle flex items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <h3 className="text-base font-extrabold text-foreground">{sec.title}</h3>
+                      <p className="text-xs text-foreground-muted">{sec.desc}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-[10px] font-bold text-foreground-muted uppercase tracking-wider block">
+                        {sec.incoming ? "Received" : "Total"}
+                      </span>
+                      <span className={`text-base font-black tracking-tight ${sec.incoming ? "text-success" : "text-foreground"}`}>
+                        {sec.incoming ? "+" : ""}{formatAmount(sec.total, activeCurrency)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-5">
+                    {sec.items.length > 0 ? (
+                      <div className="border border-border rounded-xl divide-y divide-border overflow-hidden">
+                        {sec.items.map((it) => (
+                          <div key={it.name} className="flex justify-between items-center p-3 hover:bg-secondary/40 transition-colors">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: sec.accent }} />
+                              <span className="text-xs font-extrabold text-foreground">{it.name}</span>
+                            </div>
+                            <span className="text-xs font-black text-foreground">{formatAmount(it.value, activeCurrency)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-6 text-center text-xs font-semibold text-foreground-muted bg-background-subtle rounded-xl border border-dashed border-border">
+                        {sec.incoming
+                          ? `No investment income in ${formatMonthLabel(selectedDate)}.`
+                          : `No ${sec.title.toLowerCase()} logged in ${formatMonthLabel(selectedDate)}.`}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Set Budget Limit Overlay Modal */}

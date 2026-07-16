@@ -77,6 +77,165 @@ export const DEFAULT_CATEGORIES: CategoryData[] = [
   { id: "cat-9", name: "Other", type: "income", color: "#525252", iconName: "DollarSign" },
 ];
 
+/**
+ * Extra categories surfaced under the "Other" expander in the Record
+ * Transaction modal. These match the names in `bucketConfig`'s
+ * CATEGORY_BUCKET_MAP so an expense picked here lands in the correct
+ * Needs/Wants/Investments bucket. Grouped by bucket for the expense view;
+ * shown as a flat list for income (buckets are an expense-only concept).
+ */
+export interface ExtraCategoryGroup {
+  bucket: "Needs" | "Wants" | "Investments";
+  categories: { name: string; iconName: string }[];
+}
+
+export const EXTRA_CATEGORY_GROUPS: ExtraCategoryGroup[] = [
+  {
+    bucket: "Needs",
+    categories: [
+      { name: "Mobile Bill", iconName: "Zap" },
+      { name: "Phone Bill", iconName: "Zap" },
+      { name: "Gas Bill", iconName: "Zap" },
+      { name: "Cylinder Bill", iconName: "Zap" },
+      { name: "Public Transport", iconName: "Bus" },
+      { name: "Commute", iconName: "Bus" },
+      { name: "Cab Fare", iconName: "Navigation" },
+      { name: "Car Maintenance", iconName: "Navigation" },
+      { name: "Bike Maintenance", iconName: "Navigation" },
+      { name: "School Fees", iconName: "Book" },
+      { name: "Childcare", iconName: "HeartPulse" },
+      { name: "Basic Clothing", iconName: "ShoppingBag" },
+    ],
+  },
+  {
+    bucket: "Wants",
+    categories: [
+      { name: "Gifts", iconName: "Gift" },
+      { name: "Donations", iconName: "Gift" },
+      { name: "Personal Care", iconName: "HeartPulse" },
+      { name: "Grooming", iconName: "HeartPulse" },
+      { name: "Salon", iconName: "HeartPulse" },
+      { name: "Gadgets", iconName: "Tv" },
+      { name: "Tech", iconName: "Tv" },
+      { name: "Home Decor", iconName: "Home" },
+      { name: "Furniture", iconName: "Home" },
+      { name: "Alcohol", iconName: "Coffee" },
+      { name: "Parties", iconName: "Coffee" },
+      { name: "Pubs", iconName: "Coffee" },
+    ],
+  },
+  {
+    bucket: "Investments",
+    categories: [
+      { name: "Cryptocurrency", iconName: "TrendingUp" },
+      { name: "Digital Assets", iconName: "TrendingUp" },
+      { name: "Bitcoin", iconName: "TrendingUp" },
+      { name: "Ethereum", iconName: "TrendingUp" },
+      { name: "Provident Fund", iconName: "Layers" },
+      { name: "EPF", iconName: "Layers" },
+      { name: "VPF", iconName: "Layers" },
+      { name: "Extra Loan Payment", iconName: "DollarSign" },
+      { name: "Real Estate", iconName: "Home" },
+      { name: "Property Investment", iconName: "Home" },
+      { name: "Child Savings Plan", iconName: "Shield" },
+    ],
+  },
+];
+
+/** Flat list of every expense "Other" category, across all buckets. */
+export const EXTRA_CATEGORIES_FLAT: { name: string; iconName: string }[] =
+  EXTRA_CATEGORY_GROUPS.flatMap((g) => g.categories);
+
+/**
+ * Income "Other" categories — sources of money (where income comes from), not
+ * spending buckets. Grouped by the standard personal-finance classification of
+ * income: Earned/Active (work), Investment/Portfolio (returns on capital), and
+ * Passive & Other (money not tied to active work). India-relevant naming.
+ */
+export interface IncomeCategoryGroup {
+  group: "Earned" | "Investment" | "Passive & Other";
+  categories: { name: string; iconName: string }[];
+}
+
+export const INCOME_EXTRA_CATEGORY_GROUPS: IncomeCategoryGroup[] = [
+  {
+    group: "Earned",
+    categories: [
+      { name: "Salary", iconName: "Briefcase" },
+      { name: "Bonus", iconName: "Gift" },
+      { name: "Overtime", iconName: "Briefcase" },
+      { name: "Commission", iconName: "DollarSign" },
+      { name: "Freelance", iconName: "Briefcase" },
+      { name: "Business Profit", iconName: "TrendingUp" },
+      { name: "Tips", iconName: "Coffee" },
+    ],
+  },
+  {
+    group: "Investment",
+    categories: [
+      { name: "Dividends", iconName: "TrendingUp" },
+      { name: "Interest", iconName: "DollarSign" },
+      { name: "Capital Gains", iconName: "TrendingUp" },
+      { name: "Mutual Fund Returns", iconName: "Layers" },
+      { name: "Stock Gains", iconName: "TrendingUp" },
+      { name: "Crypto Gains", iconName: "TrendingUp" },
+    ],
+  },
+  {
+    group: "Passive & Other",
+    categories: [
+      { name: "Rental Income", iconName: "Home" },
+      { name: "Royalty", iconName: "Book" },
+      { name: "Pension", iconName: "Shield" },
+      { name: "Gift Received", iconName: "Gift" },
+      { name: "Cashback / Rewards", iconName: "ShoppingBag" },
+      { name: "Refund", iconName: "DollarSign" },
+      { name: "Government Benefit", iconName: "Shield" },
+    ],
+  },
+];
+
+/** Flat list of every income "Other" category. */
+export const INCOME_EXTRA_CATEGORIES_FLAT: { name: string; iconName: string }[] =
+  INCOME_EXTRA_CATEGORY_GROUPS.flatMap((g) => g.categories);
+
+/** Fast membership test — true if a name belongs to the expense "Other" set. */
+export function isExtraCategory(name: string): boolean {
+  return EXTRA_CATEGORIES_FLAT.some((c) => c.name === name);
+}
+
+/** Fast membership test — true if a name belongs to the income "Other" set. */
+export function isIncomeExtraCategory(name: string): boolean {
+  return INCOME_EXTRA_CATEGORIES_FLAT.some((c) => c.name === name);
+}
+
+/**
+ * Maps an income category name → its income group. Mirrors `getBucketForCategory`
+ * (bucketConfig.ts) for the income side. Built from INCOME_EXTRA_CATEGORY_GROUPS,
+ * plus the default income categories from DEFAULT_CATEGORIES that aren't in the
+ * extra groups. Returns null for unknown names.
+ */
+const INCOME_GROUP_BY_NAME: Record<string, IncomeCategoryGroup["group"]> = (() => {
+  const map: Record<string, IncomeCategoryGroup["group"]> = {};
+  for (const g of INCOME_EXTRA_CATEGORY_GROUPS) {
+    for (const c of g.categories) map[c.name] = g.group;
+  }
+  // Default income categories (see DEFAULT_CATEGORIES): treat the built-in
+  // "Investment" income category as an investment return; Salary/Gift map to
+  // their natural groups.
+  map["Investment"] = "Investment";
+  map["Salary"] = "Earned";
+  map["Gift"] = "Passive & Other";
+  return map;
+})();
+
+export function getIncomeGroupForCategory(
+  name: string
+): IncomeCategoryGroup["group"] | null {
+  if (!name) return null;
+  return INCOME_GROUP_BY_NAME[name.trim()] ?? null;
+}
+
 /** Reads the user's stored categories, falling back to defaults (SSR-safe). */
 export function getStoredCategories(): CategoryData[] {
   if (typeof window === "undefined") return DEFAULT_CATEGORIES;

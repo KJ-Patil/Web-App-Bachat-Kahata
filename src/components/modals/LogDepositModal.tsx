@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { X, Check, ArrowUpRight } from "lucide-react";
 import { addTransaction, getSavingsGoals, setSavingsGoals } from "@/core/store/dataStore";
+import { SAVINGS_DEPOSIT_CATEGORY } from "@/core/utils/bucketConfig";
 
 interface LogDepositModalProps {
   isOpen: boolean;
@@ -40,17 +41,20 @@ export default function LogDepositModal({
 
     // Update the targeted goal's accumulated amount.
     const goals = getSavingsGoals();
+    const goal = goals.find((g) => g.id === goalId);
     const updatedGoals = goals.map((g) =>
       g.id === goalId ? { ...g, current: g.current + numAmount } : g
     );
     setSavingsGoals(updatedGoals);
 
-    // Also log this deposit as an "Investment" category transaction in the general
-    // ledger so that active savings/liquidity metric indices update dynamically!
+    // Also log this deposit in the general ledger so savings/liquidity metrics
+    // update. The category follows the bucket the user tagged the goal with, so
+    // saving for a phone counts as a "want" rather than an investment. Goals
+    // created before the tag existed fall back to "investments" (old behaviour).
     addTransaction({
       amount: numAmount,
       type: "expense", // Deposits to savings are out of active liquid flow
-      category: "Investment",
+      category: SAVINGS_DEPOSIT_CATEGORY[goal?.bucket ?? "investments"],
       description: `Deposit to '${goalName}' vault`,
     });
 

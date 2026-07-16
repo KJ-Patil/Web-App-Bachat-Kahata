@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, CheckCircle2, Target, Calendar, Coins } from "lucide-react";
+import { X, CheckCircle2, Target, Calendar, Coins, Layers } from "lucide-react";
 import { SavingsGoal, getSavingsGoals, setSavingsGoals, generateId } from "@/core/store/dataStore";
+import { BUCKET_LABELS, type BucketType } from "@/core/utils/bucketConfig";
 
 interface AddGoalModalProps {
   isOpen: boolean;
@@ -18,6 +19,9 @@ export default function AddGoalModal({
   const [name, setName] = useState("");
   const [target, setTarget] = useState("");
   const [deadline, setDeadline] = useState("");
+  // Which bucket this goal's deposits count toward. Defaults to "investments",
+  // matching how goal deposits have always been categorised.
+  const [bucket, setBucket] = useState<BucketType>("investments");
   const [success, setSuccess] = useState(false);
 
   if (!isOpen) return null;
@@ -33,6 +37,7 @@ export default function AddGoalModal({
       target: numTarget,
       current: 0,
       deadline: new Date(deadline).toISOString(),
+      bucket,
     };
 
     const existing = getSavingsGoals();
@@ -44,6 +49,7 @@ export default function AddGoalModal({
       setName("");
       setTarget("");
       setDeadline("");
+      setBucket("investments");
       setSuccess(false);
       onClose();
       if (onSuccess) onSuccess();
@@ -54,6 +60,7 @@ export default function AddGoalModal({
     setName("");
     setTarget("");
     setDeadline("");
+    setBucket("investments");
     setSuccess(false);
     onClose();
   };
@@ -137,6 +144,34 @@ export default function AddGoalModal({
                     required
                   />
                 </div>
+              </div>
+
+              {/* Bucket tag — decides which 50/30/20 bucket deposits count toward */}
+              <div className="space-y-1">
+                <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5" />
+                  Counts As
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  {(Object.keys(BUCKET_LABELS) as BucketType[]).map((b) => (
+                    <button
+                      key={b}
+                      type="button"
+                      onClick={() => setBucket(b)}
+                      className={`py-2.5 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                        bucket === b
+                          ? "bg-primary-lighter text-primary border-primary font-extrabold"
+                          : "bg-card border-border text-foreground-secondary hover:bg-secondary hover:text-foreground"
+                      }`}
+                    >
+                      {BUCKET_LABELS[b]}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] font-medium text-foreground-muted pt-0.5">
+                  Deposits to this goal count toward this bucket in your Budgeting Rule
+                  (e.g. saving for a phone = <strong>Wants</strong>, emergency fund = <strong>Investments</strong>).
+                </p>
               </div>
 
               {/* Deadline */}

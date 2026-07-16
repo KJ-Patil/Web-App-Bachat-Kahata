@@ -1,9 +1,16 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, AlertTriangle, CheckCircle2, Tag } from "lucide-react";
+import { X, AlertTriangle, CheckCircle2, Tag, MoreHorizontal } from "lucide-react";
 import { addTransaction, getTransactions, getBudgets } from "@/core/store/dataStore";
-import { getActiveCategories, resolveCategoryIcon } from "@/core/utils/categories";
+import {
+  getActiveCategories,
+  resolveCategoryIcon,
+  EXTRA_CATEGORY_GROUPS,
+  INCOME_EXTRA_CATEGORY_GROUPS,
+  isExtraCategory,
+  isIncomeExtraCategory,
+} from "@/core/utils/categories";
 import { getCurrencySymbol } from "@/core/utils/currencyManager";
 import type { CategoryData } from "@/components/modals/AddCategoryModal";
 
@@ -30,6 +37,8 @@ export default function AddTransactionModal({
   // modal opens, so newly created / archived categories show up immediately.
   const [expenseCategories, setExpenseCategories] = useState<CategoryData[]>([]);
   const [incomeCategories, setIncomeCategories] = useState<CategoryData[]>([]);
+  // Whether the "Other" expander (the full extra-category list) is open.
+  const [showOther, setShowOther] = useState(false);
   // Currency symbol shown in the amount/discount fields follows the user's
   // active currency instead of a hardcoded rupee sign.
   const [activeCurrency, setActiveCurrency] = useState("INR");
@@ -49,6 +58,7 @@ export default function AddTransactionModal({
         setDescription("");
         setDiscountMode("percent");
         setDiscountValue("");
+        setShowOther(false);
         setSuccess(false);
         setAlertMessage(null);
       }, 0);
@@ -195,7 +205,8 @@ export default function AddTransactionModal({
                     type="button"
                     onClick={() => {
                       setTransactionType("expense");
-                      if (!expenseCategories.find(c => c.name === category)) {
+                      setShowOther(false);
+                      if (!expenseCategories.find(c => c.name === category) && !isExtraCategory(category)) {
                         setCategory(expenseCategories[0]?.name ?? "");
                       }
                     }}
@@ -211,7 +222,8 @@ export default function AddTransactionModal({
                     type="button"
                     onClick={() => {
                       setTransactionType("income");
-                      if (!incomeCategories.find(c => c.name === category)) {
+                      setShowOther(false);
+                      if (!incomeCategories.find(c => c.name === category) && !isIncomeExtraCategory(category)) {
                         setCategory(incomeCategories[0]?.name ?? "");
                       }
                     }}
@@ -333,7 +345,7 @@ export default function AddTransactionModal({
                       <button
                         key={opt.id}
                         type="button"
-                        onClick={() => setCategory(opt.name)}
+                        onClick={() => { setCategory(opt.name); setShowOther(false); }}
                         className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all cursor-pointer ${
                           isSelected
                             ? "bg-primary-lighter text-primary border-primary font-bold scale-105"
@@ -345,7 +357,86 @@ export default function AddTransactionModal({
                       </button>
                     );
                   })}
+
+                  {/* "Other" expander — reveals the full extra-category list */}
+                  <button
+                    type="button"
+                    onClick={() => setShowOther((v) => !v)}
+                    className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all cursor-pointer ${
+                      showOther || isExtraCategory(category) || isIncomeExtraCategory(category)
+                        ? "bg-primary-lighter text-primary border-primary font-bold scale-105"
+                        : "bg-card border-border text-icon-default hover:bg-secondary hover:text-foreground"
+                    }`}
+                  >
+                    <MoreHorizontal className="w-5 h-5 mb-1" />
+                    <span className="text-[10px] truncate max-w-full">Other</span>
+                  </button>
                 </div>
+
+                {/* Expanded "Other" list: grouped by bucket for expense, flat for income */}
+                {showOther && (
+                  <div className="mt-1 rounded-2xl border border-border bg-background-subtle p-3 space-y-3 max-h-64 overflow-y-auto">
+                    {transactionType === "expense" ? (
+                      EXTRA_CATEGORY_GROUPS.map((group) => (
+                        <div key={group.bucket} className="space-y-1.5">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-foreground-muted block">
+                            {group.bucket}
+                          </span>
+                          <div className="grid grid-cols-4 gap-2">
+                            {group.categories.map((opt) => {
+                              const Icon = resolveCategoryIcon(opt.iconName);
+                              const isSelected = category === opt.name;
+                              return (
+                                <button
+                                  key={opt.name}
+                                  type="button"
+                                  onClick={() => setCategory(opt.name)}
+                                  className={`flex flex-col items-center justify-center p-2.5 rounded-xl border transition-all cursor-pointer ${
+                                    isSelected
+                                      ? "bg-primary-lighter text-primary border-primary font-bold"
+                                      : "bg-card border-border text-icon-default hover:bg-secondary hover:text-foreground"
+                                  }`}
+                                >
+                                  <Icon className="w-4 h-4 mb-1" />
+                                  <span className="text-[9px] leading-tight text-center break-words max-w-full">{opt.name}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      INCOME_EXTRA_CATEGORY_GROUPS.map((group) => (
+                        <div key={group.group} className="space-y-1.5">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-foreground-muted block">
+                            {group.group}
+                          </span>
+                          <div className="grid grid-cols-4 gap-2">
+                            {group.categories.map((opt) => {
+                              const Icon = resolveCategoryIcon(opt.iconName);
+                              const isSelected = category === opt.name;
+                              return (
+                                <button
+                                  key={opt.name}
+                                  type="button"
+                                  onClick={() => setCategory(opt.name)}
+                                  className={`flex flex-col items-center justify-center p-2.5 rounded-xl border transition-all cursor-pointer ${
+                                    isSelected
+                                      ? "bg-primary-lighter text-primary border-primary font-bold"
+                                      : "bg-card border-border text-icon-default hover:bg-secondary hover:text-foreground"
+                                  }`}
+                                >
+                                  <Icon className="w-4 h-4 mb-1" />
+                                  <span className="text-[9px] leading-tight text-center break-words max-w-full">{opt.name}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Narrative Description */}

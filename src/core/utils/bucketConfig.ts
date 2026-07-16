@@ -22,6 +22,20 @@ export const CATEGORY_BUCKET_MAP: Record<string, BucketType> = {
   "Loan EMI": "needs",
   "Minimum Credit Card Payment": "needs",
   "Housing": "needs", // Map default category as well
+  "Mobile Bill": "needs",
+  "Phone Bill": "needs",
+  "Gas Bill": "needs",
+  "Cylinder Bill": "needs",
+  "Public Transport": "needs",
+  "Commute": "needs",
+  "Cab Fare": "needs",
+  "Car Maintenance": "needs",
+  "Bike Maintenance": "needs",
+  "School Fees": "needs",
+  "Childcare": "needs",
+  "Basic Clothing": "needs",
+  // Deposits into a savings goal the user tagged as a "need" (see LogDepositModal).
+  "Savings (Needs)": "needs",
 
   // Wants
   "Dining Out": "wants",
@@ -34,6 +48,20 @@ export const CATEGORY_BUCKET_MAP: Record<string, BucketType> = {
   "Hobbies": "wants",
   "Gaming": "wants",
   "Gym": "wants",
+  "Gifts": "wants",
+  "Donations": "wants",
+  "Personal Care": "wants",
+  "Grooming": "wants",
+  "Salon": "wants",
+  "Gadgets": "wants",
+  "Tech": "wants",
+  "Home Decor": "wants",
+  "Furniture": "wants",
+  "Alcohol": "wants",
+  "Parties": "wants",
+  "Pubs": "wants",
+  // Deposits into a savings goal the user tagged as a "want" (see LogDepositModal).
+  "Savings (Wants)": "wants",
 
   // Investments
   "Fixed Deposit (FD)": "investments",
@@ -45,6 +73,17 @@ export const CATEGORY_BUCKET_MAP: Record<string, BucketType> = {
   "Emergency Fund": "investments",
   "Gold Investment": "investments",
   "Investment": "investments", // Map default category as well
+  "Cryptocurrency": "investments",
+  "Digital Assets": "investments",
+  "Bitcoin": "investments",
+  "Ethereum": "investments",
+  "Provident Fund": "investments",
+  "EPF": "investments",
+  "VPF": "investments",
+  "Extra Loan Payment": "investments",
+  "Real Estate": "investments",
+  "Property Investment": "investments",
+  "Child Savings Plan": "investments",
 };
 
 /**
@@ -56,3 +95,21 @@ export function getBucketForCategory(category: string): BucketType {
   const normalized = category.trim();
   return CATEGORY_BUCKET_MAP[normalized] || "needs";
 }
+
+/**
+ * The expense category a savings-goal deposit is logged under, per the bucket
+ * the user tagged the goal with. "investments" keeps the original "Investment"
+ * category so existing goals and their past deposits stay consistent.
+ */
+export const SAVINGS_DEPOSIT_CATEGORY: Record<BucketType, string> = {
+  needs: "Savings (Needs)",
+  wants: "Savings (Wants)",
+  investments: "Investment",
+};
+
+/** Human label for each bucket, used in goal-tagging UI. */
+export const BUCKET_LABELS: Record<BucketType, string> = {
+  needs: "Needs",
+  wants: "Wants",
+  investments: "Investments",
+};

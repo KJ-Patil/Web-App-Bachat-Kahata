@@ -6,6 +6,7 @@ import { formatAmount } from "@/core/utils/currencyManager";
 import LogDepositModal from "@/components/modals/LogDepositModal";
 import AddGoalModal from "@/components/modals/AddGoalModal";
 import { SavingsGoal, getSavingsGoals } from "@/core/store/dataStore";
+import { BUCKET_LABELS } from "@/core/utils/bucketConfig";
 import { useTranslation } from "@/i18n/i18nContext";
 
 export default function SavingsPage() {
@@ -109,9 +110,14 @@ export default function SavingsPage() {
             >
               <div className="flex justify-between items-start gap-4 mb-4">
                 <div className="space-y-1.5 min-w-0">
-                  <h3 className="font-extrabold text-foreground text-base truncate pr-2">
-                    {goal.name}
-                  </h3>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h3 className="font-extrabold text-foreground text-base truncate">
+                      {goal.name}
+                    </h3>
+                    <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-secondary text-foreground-secondary shrink-0">
+                      {BUCKET_LABELS[goal.bucket ?? "investments"]}
+                    </span>
+                  </div>
                   <div className="flex items-center gap-1.5 text-xs text-foreground-muted">
                     <Target className="w-3.5 h-3.5 shrink-0" />
                     <span>{t('common.target')}: {formatAmount(goal.target, activeCurrency)}</span>

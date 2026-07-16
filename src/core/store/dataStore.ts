@@ -39,6 +39,14 @@ export interface SavingsGoal {
   target: number;
   current: number;
   deadline: string;
+  /**
+   * Which 50/30/20 bucket this goal's deposits count toward. A goal isn't always
+   * an investment — saving for a phone is a "want", an emergency fund is an
+   * "investment". Optional for backwards compatibility: goals created before
+   * this field existed are treated as "investments" (the previous behaviour).
+   * Mirrors BucketType in core/utils/bucketConfig.
+   */
+  bucket?: "needs" | "wants" | "investments";
 }
 
 export type BudgetMap = Record<string, number>;
@@ -301,16 +309,74 @@ const detachers: Array<() => void> = [];
 /** Keys currently being written from a remote snapshot — skip pushing back. */
 const applyingRemote = new Set<string>();
 
+/**
+ * Durability tracking so a "saved" is never a lie. Every cloud write is watched
+ * to completion:
+ *  - `inFlight` holds writes waiting for the server to acknowledge them.
+ *  - `failedKeys` holds writes that couldn't reach the cloud (offline, not
+ *    signed in yet, or a rejected write) mapped to the latest value to resend.
+ * If either is non-empty, the local copy holds data the cloud does NOT, so it
+ * must not be wiped on logout without warning the user. See hasUnsyncedWrites.
+ */
+const inFlight = new Set<Promise<void>>();
+const failedKeys = new Map<string, unknown>();
+
+/** True while any local change has not yet been confirmed saved to the cloud. */
+export function hasUnsyncedWrites(): boolean {
+  return inFlight.size > 0 || failedKeys.size > 0;
+}
+
+/** Perform one tracked cloud write, recording success/failure for durability. */
+function trackWrite(key: string, value: unknown): Promise<void> {
+  let p: Promise<void>;
+  p = setDoc(doc(db, "users", currentUid!, "appData", key), { value })
+    .then(() => {
+      failedKeys.delete(key); // confirmed in the cloud
+    })
+    .catch((err) => {
+      console.error(`[Firestore Sync Error] Failed to write key "${key}":`, err);
+      failedKeys.set(key, value); // remember it so we can retry / warn on logout
+    })
+    .finally(() => {
+      inFlight.delete(p);
+    });
+  inFlight.add(p);
+  return p;
+}
+
 /** Mirror a local write up to the signed-in user's Firestore document. */
 function pushToFirestore(key: string, value: unknown): void {
-  if (!currentUid) return; // not signed in → local-only
   if (!SYNCED_KEYS.includes(key)) return; // not a synced key
   if (applyingRemote.has(key)) return; // came FROM the cloud, don't echo back
-  void setDoc(doc(db, "users", currentUid, "appData", key), { value }).catch(
-    () => {
-      /* offline / transient — localStorage already holds the source of truth */
-    }
-  );
+  if (!currentUid) {
+    // Not signed in yet: this change lives only locally. Remember it as unsynced
+    // so logout warns instead of silently discarding it, and retry once we sign in.
+    failedKeys.set(key, value);
+    return;
+  }
+  void trackWrite(key, value);
+}
+
+/**
+ * Push every queued/failed write and wait for all in-flight writes to settle.
+ * Returns true when everything is confirmed in the cloud (safe to wipe local),
+ * false if something still couldn't be saved (e.g. offline). Call before logout.
+ */
+export async function flushPendingWrites(): Promise<boolean> {
+  if (currentUid) {
+    for (const [key, value] of [...failedKeys]) void trackWrite(key, value);
+    // New writes may be added while we await, so keep draining until empty.
+    while (inFlight.size > 0) await Promise.allSettled([...inFlight]);
+  }
+  return !hasUnsyncedWrites();
+}
+
+// When connectivity returns, retry anything that failed while offline so the
+// cloud quietly catches up without the user having to do anything.
+if (typeof window !== "undefined") {
+  window.addEventListener("online", () => {
+    if (currentUid && failedKeys.size > 0) void flushPendingWrites();
+  });
 }
 
 /** True for `null`/`undefined`, an empty array, or an empty object — i.e. a
@@ -347,7 +413,9 @@ function startSync(uid: string): void {
           // No cloud copy yet — seed it from whatever is already local.
           const local = memCache.get(key);
           if (local != null && !isEmptyValue(local)) {
-            void setDoc(ref, { value: local }).catch(() => {});
+            void setDoc(ref, { value: local }).catch((err) => {
+              console.error(`[Firestore Sync Error] Failed to seed initial local key "${key}":`, err);
+            });
           }
           return;
         }
@@ -362,7 +430,9 @@ function startSync(uid: string): void {
         if (isEmptyValue(remote)) {
           const local = memCache.get(key);
           if (local != null && !isEmptyValue(local)) {
-            void setDoc(ref, { value: local }).catch(() => {});
+            void setDoc(ref, { value: local }).catch((err) => {
+              console.error(`[Firestore Sync Error] Failed to reconcile remote key "${key}":`, err);
+            });
             return;
           }
         }
@@ -392,11 +462,46 @@ if (typeof window !== "undefined") {
         stopSync();
         startSync(user.uid);
       }
+      // Now that we can reach the cloud, push anything written while signed out.
+      if (failedKeys.size > 0) void flushPendingWrites();
     } else {
       currentUid = null;
       lockDataStore();
     }
   });
+}
+
+/**
+ * Session-only PIN cache. The AES key lives in memory and is lost on every page
+ * refresh; without re-deriving it the app can't read its own encrypted data and
+ * shows an empty screen. We stash the PIN in `sessionStorage` — which survives a
+ * refresh but is cleared when the tab/browser closes — so `tryAutoUnlock` can
+ * transparently re-derive the key. A fresh session or logout still requires the
+ * PIN, keeping a shared device protected.
+ */
+const SESSION_PIN_KEY = "session_pin";
+
+/** True when the store is unlocked (the encryption key is held in memory). */
+export function isUnlocked(): boolean {
+  return aesKey !== null;
+}
+
+/**
+ * Re-unlock automatically after a refresh using the session-cached PIN, so the
+ * user doesn't have to retype it and their data doesn't vanish on reload.
+ * Returns true if the store is unlocked afterwards.
+ */
+export async function tryAutoUnlock(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  if (aesKey) return true; // already unlocked this session
+  const pin = sessionStorage.getItem(SESSION_PIN_KEY);
+  if (!pin) return false;
+  try {
+    await unlockDataStore(pin);
+  } catch {
+    sessionStorage.removeItem(SESSION_PIN_KEY); // stale/invalid — force re-entry
+  }
+  return isUnlocked();
 }
 
 /**
@@ -408,6 +513,8 @@ if (typeof window !== "undefined") {
 export async function unlockDataStore(pin: string): Promise<void> {
   if (typeof window === "undefined") return;
   aesKey = await deriveKeyFromPin(pin);
+  // Remember the PIN for THIS browser session so a refresh can auto-unlock.
+  sessionStorage.setItem(SESSION_PIN_KEY, pin);
 
   for (const key of SENSITIVE_KEYS) {
     const raw = localStorage.getItem(key);
@@ -446,6 +553,12 @@ export async function unlockDataStore(pin: string): Promise<void> {
 export function lockDataStore(): void {
   aesKey = null;
   memCache.clear();
+  // Forget the cached PIN so this device can't auto-unlock after sign-out.
+  if (typeof window !== "undefined") sessionStorage.removeItem(SESSION_PIN_KEY);
+  // The local plaintext is gone, so any "unsynced" bookkeeping is moot — either
+  // it flushed before we got here, or the user chose to discard it on logout.
+  failedKeys.clear();
+  inFlight.clear();
   stopSync();
 }
 

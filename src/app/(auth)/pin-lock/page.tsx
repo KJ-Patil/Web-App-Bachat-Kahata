@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Lock, ShieldCheck, AlertCircle, ArrowLeft, Mail, Eye, EyeOff, Info } from "lucide-react";
 import { auth } from "@/config/firebase";
 import { signOut, onAuthStateChanged } from "firebase/auth";
-import { clearLocalCache, unlockDataStore } from "@/core/store/dataStore";
+import { clearLocalCache, unlockDataStore, flushPendingWrites, hasUnsyncedWrites } from "@/core/store/dataStore";
 import { useTranslation } from "@/i18n/i18nContext";
 
 /**
@@ -255,6 +255,15 @@ export default function PinLockPage() {
   };
 
   const handleSwitchAccount = async () => {
+    // Don't discard local data that never reached the cloud (see handleLogout).
+    const allSaved = await flushPendingWrites();
+    if (!allSaved && hasUnsyncedWrites()) {
+      const proceed = window.confirm(
+        "Some changes haven't been saved to the cloud yet (you may be offline). " +
+          "If you switch accounts now they will be lost. Continue anyway?"
+      );
+      if (!proceed) return;
+    }
     try {
       await signOut(auth);
     } catch {

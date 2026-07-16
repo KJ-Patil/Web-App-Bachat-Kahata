@@ -5,7 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { Home, Settings, LogOut, Plus, Globe, List, BookOpen, BarChart3, Download, CreditCard, Mic, Users, Activity, SlidersHorizontal, Receipt, BrainCircuit, GraduationCap, Target, PiggyBank, Sparkles, Flame, Repeat, ArrowLeftRight, CalendarDays, PieChart } from "lucide-react";
 import { useLazyCatchUpSync } from "@/core/store/CatchUpSync";
-import { clearFinancialData, clearLocalCache } from "@/core/store/dataStore";
+import { clearFinancialData, clearLocalCache, flushPendingWrites, hasUnsyncedWrites, isUnlocked, tryAutoUnlock } from "@/core/store/dataStore";
 import { auth } from "@/config/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import AddTransactionModal from "@/components/modals/AddTransactionModal";
@@ -62,8 +62,20 @@ export default function DashboardLayout({
   const [isAuthed, setIsAuthed] = useState(false);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        // Being signed in isn't enough: the encrypted data must also be UNLOCKED.
+        // A refresh wipes the in-memory key, so try to restore it from the
+        // session-cached PIN. If that fails (fresh browser session, or the user
+        // never unlocked), send them to the lock screen instead of rendering the
+        // dashboard with empty/undecryptable data.
+        if (!isUnlocked()) {
+          const unlocked = await tryAutoUnlock();
+          if (!unlocked) {
+            router.replace("/pin-lock");
+            return;
+          }
+        }
         setIsAuthed(true);
       } else {
         setIsAuthed(false);
@@ -131,6 +143,19 @@ export default function DashboardLayout({
   }, [router]);
 
   const handleLogout = async () => {
+    // Logout wipes the local cache trusting the cloud has everything. So FIRST
+    // make sure every change is actually saved to the cloud — otherwise a
+    // transaction that never synced would be lost for good. Try to flush pending
+    // writes; if some still can't be saved (e.g. offline), warn before wiping.
+    const allSaved = await flushPendingWrites();
+    if (!allSaved && hasUnsyncedWrites()) {
+      const proceed = window.confirm(
+        "Some changes haven't been saved to the cloud yet (you may be offline). " +
+          "If you log out now they will be lost. Log out anyway?"
+      );
+      if (!proceed) return; // stay signed in so the user can retry / reconnect
+    }
+
     // End the REAL Firebase session (not just a localStorage key), then purge
     // the local cache so leftover financial data can't be read by the next
     // person on a shared device. The cloud copy is preserved and re-synced on
