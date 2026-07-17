@@ -5,6 +5,9 @@ import { auth, db } from "@/config/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, onSnapshot, setDoc, collection, getDocs, deleteDoc, query, orderBy, getDoc } from "firebase/firestore";
 import { deriveKeyFromPin, encryptValue, decryptValue, isEncrypted } from "./encryption";
+// Type-only: erased at compile time, so this does not form an import cycle with
+// categories.ts, which imports the category accessors below at runtime.
+import type { CategoryData } from "@/core/utils/categories";
 
 /**
  * Central data layer — the single source of truth for the app.
@@ -154,6 +157,8 @@ export const KEYS = {
   monthlyIncome: "monthly_income",
   moneyRuleSplit: "money_rule_split",
   smsGateway: "sms_gateway",
+  customCategories: "custom_categories",
+  archivedCategories: "archived_categories",
 } as const;
 
 const STORE_EVENT = "datastore:change";
@@ -177,6 +182,11 @@ const SENSITIVE_KEYS: string[] = [
   // Holds the user's own SMS gateway credentials — secret, so it must never sit
   // in plaintext on disk.
   KEYS.smsGateway,
+  // Categories carry the user's 50/30/20 bucket choices, which the Money Rule
+  // computes from. Left unsynced they silently reset on a restore or a new
+  // device, and the split reports different numbers with no error shown.
+  KEYS.customCategories,
+  KEYS.archivedCategories,
 ];
 
 /**
@@ -202,6 +212,13 @@ const FINANCIAL_KEYS = [
   KEYS.manualSubscriptions,
   KEYS.monthlyIncome,
   KEYS.moneyRuleSplit,
+  // Sensitive keys listed here only so clearLocalCache purges them from a
+  // shared device on sign-out. clearFinancialData skips them via its
+  // SYNCED_KEYS guard, so a data reset still keeps categories and credentials —
+  // as its doc comment above promises.
+  KEYS.smsGateway,
+  KEYS.customCategories,
+  KEYS.archivedCategories,
   "notifications",
   "mood_logs",
   // Legacy / derived caches that were seeded with fabricated values
@@ -757,6 +774,28 @@ export function setSmsGateway(config: SmsGatewayConfig): void {
   writeJSON(KEYS.smsGateway, config);
 }
 
+/**
+ * Raw stored categories — `[]` means "none stored", which callers read as "use
+ * the seed set". Prefer `getStoredCategories`/`getActiveCategories` in
+ * core/utils/categories; these exist so that module can reach the store without
+ * touching localStorage directly (categories are encrypted and synced).
+ */
+export function getCustomCategories(): CategoryData[] {
+  return readJSON<CategoryData[]>(KEYS.customCategories, []);
+}
+
+export function setCustomCategories(categories: CategoryData[]): void {
+  writeJSON(KEYS.customCategories, categories);
+}
+
+export function getArchivedCategoryIds(): string[] {
+  return readJSON<string[]>(KEYS.archivedCategories, []);
+}
+
+export function setArchivedCategoryIds(ids: string[]): void {
+  writeJSON(KEYS.archivedCategories, ids);
+}
+
 // ──────────────── DERIVED SELECTORS ────────────────
 const sum = (txs: Transaction[]) => txs.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
 
@@ -1062,6 +1101,32 @@ export function useMoneyRuleSplit(): MoneyRuleSplit {
     };
   }, []);
   return split;
+}
+
+/**
+ * Subscribe to the SMS gateway config.
+ *
+ * Must be a subscription, not a one-shot read: on a fresh device there is no
+ * local ciphertext to decrypt at unlock, so the config reads as empty until the
+ * Firestore snapshot lands and fires STORE_EVENT. A caller that read once on
+ * mount would hold that empty config and write it back over the real key.
+ *
+ * Returns `null` while locked so callers can tell "not loaded yet" from a
+ * config that has loaded and is genuinely empty.
+ */
+export function useSmsGateway(): SmsGatewayConfig | null {
+  const [config, setConfig] = useState<SmsGatewayConfig | null>(null);
+  useEffect(() => {
+    const sync = () => setConfig(isUnlocked() ? getSmsGateway() : null);
+    sync();
+    window.addEventListener(STORE_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(STORE_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+  return config;
 }
 
 /** Subscribe to the family expenses store. */

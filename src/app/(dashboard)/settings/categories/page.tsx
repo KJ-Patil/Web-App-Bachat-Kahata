@@ -6,10 +6,15 @@ import { ArrowLeft, Plus, Archive, ArchiveRestore, Layers } from "lucide-react";
 import AddCategoryModal from "@/components/modals/AddCategoryModal";
 import {
   CATEGORY_ICONS as iconMap,
-  DEFAULT_CATEGORIES,
+  getStoredCategories,
   resolveBucketForCategory,
   type CategoryData,
 } from "@/core/utils/categories";
+import {
+  getArchivedCategoryIds,
+  setArchivedCategoryIds,
+  setCustomCategories,
+} from "@/core/store/dataStore";
 import { BUCKET_LABELS, type BucketType } from "@/core/utils/bucketConfig";
 
 export default function CategoryManagerPage() {
@@ -18,26 +23,29 @@ export default function CategoryManagerPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("custom_categories");
-      if (stored) {
-        setCategories(JSON.parse(stored));
-      } else {
-        setCategories(DEFAULT_CATEGORIES);
-        localStorage.setItem("custom_categories", JSON.stringify(DEFAULT_CATEGORIES));
-      }
-
-      const archived = localStorage.getItem("archived_categories");
-      if (archived) {
-        setArchivedIds(JSON.parse(archived));
-      }
-    }
+    /*
+     * Subscribe rather than read once: categories are encrypted and synced, so
+     * on a fresh device they arrive from the cloud after this page has mounted.
+     * Every edit below writes straight through to the store, so there is no
+     * local draft a re-sync could clobber.
+     */
+    const sync = () => {
+      setCategories(getStoredCategories());
+      setArchivedIds(getArchivedCategoryIds());
+    };
+    sync();
+    window.addEventListener("datastore:change", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("datastore:change", sync);
+      window.removeEventListener("storage", sync);
+    };
   }, []);
 
   const handleAddCategory = (newCat: CategoryData) => {
-    const updated = [...categories, newCat];
-    setCategories(updated);
-    localStorage.setItem("custom_categories", JSON.stringify(updated));
+    // `categories` is the seed set until the user first edits, so this persists
+    // the defaults alongside the new one — the store holds no partial list.
+    setCustomCategories([...categories, newCat]);
   };
 
   /**
@@ -46,21 +54,14 @@ export default function CategoryManagerPage() {
    * the resolved fallback — saving here makes that choice explicit.
    */
   const handleBucketChange = (id: string, bucket: BucketType) => {
-    const updated = categories.map((c) => (c.id === id ? { ...c, bucket } : c));
-    setCategories(updated);
-    localStorage.setItem("custom_categories", JSON.stringify(updated));
+    setCustomCategories(categories.map((c) => (c.id === id ? { ...c, bucket } : c)));
   };
 
   const toggleArchive = (id: string) => {
     const isArchived = archivedIds.includes(id);
-    let updated;
-    if (isArchived) {
-      updated = archivedIds.filter(aid => aid !== id);
-    } else {
-      updated = [...archivedIds, id];
-    }
-    setArchivedIds(updated);
-    localStorage.setItem("archived_categories", JSON.stringify(updated));
+    setArchivedCategoryIds(
+      isArchived ? archivedIds.filter((aid) => aid !== id) : [...archivedIds, id]
+    );
   };
 
   const activeCategories = categories.filter(c => !archivedIds.includes(c.id));

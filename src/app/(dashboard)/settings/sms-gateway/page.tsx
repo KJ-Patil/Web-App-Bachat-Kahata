@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, MessageSquare, Save, Eye, EyeOff, Info, ExternalLink, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import {
-  getSmsGateway,
+  useSmsGateway,
   setSmsGateway,
   type SmsGatewayConfig,
 } from "@/core/store/dataStore";
@@ -34,24 +34,40 @@ const RECHARGE_TIERS: { recharge: string; perSms: string }[] = [
 ];
 
 export default function SmsGatewayPage() {
+  // Subscribed, not snapshotted: on a fresh device the key arrives from the
+  // cloud after this page has already mounted.
+  const stored = useSmsGateway();
+
   // Held as a draft: edits only reach the store on Save.
   const [config, setConfig] = useState<SmsGatewayConfig | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [revealed, setRevealed] = useState(false);
 
   useEffect(() => {
     /*
-     * The stored config is client-only; seeding it as initial state would make
-     * the server and client render different HTML, so it must load on mount.
+     * Track the store until the user starts editing. Adopting only the first
+     * non-null read is not enough: a fresh device reads an empty config, and
+     * the real key only lands when the cloud snapshot arrives afterwards. Once
+     * `dirty`, the draft wins — a late sync must not overwrite what someone is
+     * still typing.
      */
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setConfig(getSmsGateway());
-  }, []);
+    if (stored && !dirty) setConfig(stored);
+  }, [stored, dirty]);
 
-  // Nothing to render until the stored config has loaded.
+  /** Mark edited so the effect above stops overwriting the draft. */
+  const editConfig = (patch: Partial<SmsGatewayConfig>) => {
+    setDirty(true);
+    setConfig((c) => c && { ...c, ...patch });
+  };
+
+  // Locked or not yet hydrated — render nothing rather than an empty form whose
+  // Save would wipe the stored key.
   if (!config) return null;
 
   const handleSave = () => {
     setSmsGateway(config);
+    setDirty(false);
     toast.success("SMS gateway settings saved.");
   };
 
@@ -107,7 +123,7 @@ export default function SmsGatewayPage() {
           type="button"
           role="switch"
           aria-checked={config.enabled}
-          onClick={() => setConfig((c) => c && { ...c, enabled: !c.enabled })}
+          onClick={() => editConfig({ enabled: !config.enabled })}
           className={`relative w-12 h-7 rounded-full transition-colors shrink-0 ${
             config.enabled ? "bg-primary" : "bg-secondary border border-border"
           }`}
@@ -129,7 +145,7 @@ export default function SmsGatewayPage() {
           <input
             type={revealed ? "text" : "password"}
             value={config.apiKey}
-            onChange={(e) => setConfig((c) => c && { ...c, apiKey: e.target.value })}
+            onChange={(e) => editConfig({ apiKey: e.target.value })}
             placeholder="Your Fast2SMS authorization key"
             autoComplete="off"
             spellCheck={false}

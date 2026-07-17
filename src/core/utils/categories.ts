@@ -20,6 +20,10 @@ import {
   CATEGORY_BUCKET_MAP,
   type BucketType,
 } from "@/core/utils/bucketConfig";
+import {
+  getCustomCategories,
+  getArchivedCategoryIds,
+} from "@/core/store/dataStore";
 
 /**
  * Single source of truth for transaction/budget categories.
@@ -56,9 +60,6 @@ export interface CategoryData {
    */
   bucket?: BucketType;
 }
-
-const STORAGE_KEY = "custom_categories";
-const ARCHIVED_KEY = "archived_categories";
 
 /** Resolves the stored icon name to its lucide component (Layers as fallback). */
 export const CATEGORY_ICONS: Record<string, LucideIcon> = {
@@ -261,28 +262,23 @@ export function getIncomeGroupForCategory(
   return INCOME_GROUP_BY_NAME[name.trim()] ?? null;
 }
 
-/** Reads the user's stored categories, falling back to defaults (SSR-safe). */
+/**
+ * Reads the user's stored categories, falling back to defaults (SSR-safe).
+ *
+ * Goes through the data store rather than localStorage: categories carry the
+ * bucket choices the Money Rule computes from, so they are encrypted at rest
+ * and synced like the rest of the user's financial data.
+ */
 export function getStoredCategories(): CategoryData[] {
   if (typeof window === "undefined") return DEFAULT_CATEGORIES;
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) return DEFAULT_CATEGORIES;
-    const parsed = JSON.parse(stored) as CategoryData[];
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_CATEGORIES;
-  } catch {
-    return DEFAULT_CATEGORIES;
-  }
+  const stored = getCustomCategories();
+  return Array.isArray(stored) && stored.length > 0 ? stored : DEFAULT_CATEGORIES;
 }
 
 function getArchivedIds(): string[] {
   if (typeof window === "undefined") return [];
-  try {
-    const stored = localStorage.getItem(ARCHIVED_KEY);
-    const parsed = stored ? JSON.parse(stored) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  const stored = getArchivedCategoryIds();
+  return Array.isArray(stored) ? stored : [];
 }
 
 /**
