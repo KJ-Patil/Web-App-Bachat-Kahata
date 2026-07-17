@@ -113,38 +113,3 @@ export function getSmsLink(phone: string, message: string): string {
     : `sms:?body=${encodeURIComponent(message)}`;
 }
 
-/**
- * Simulated Twilio gateway dispatch.
- * Delays for 1.5 seconds, then logs the transaction inside localStorage notifications feed.
- */
-export async function sendTwilioSmsSimulated(
-  phone: string,
-  message: string,
-  recipientName: string
-): Promise<{ success: boolean; messageId: string }> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      if (typeof window !== "undefined") {
-        const stored = localStorage.getItem("notifications");
-        const notifications = stored ? JSON.parse(stored) : [];
-        
-        const newNotification = {
-          id: `twilio-${Date.now()}`,
-          text: `[Twilio SMS] Dispatched reminder to ${recipientName} (${phone}): "${message.slice(0, 60)}..."`,
-          type: "success",
-          read: false,
-          date: new Date().toISOString(),
-        };
-
-        localStorage.setItem("notifications", JSON.stringify([newNotification, ...notifications]));
-        
-        // Dispatch custom datastore event so listening UIs update automatically
-        window.dispatchEvent(new Event("datastore:change"));
-      }
-      resolve({
-        success: true,
-        messageId: `msg_${Math.random().toString(36).substr(2, 9)}`,
-      });
-    }, 1500);
-  });
-}

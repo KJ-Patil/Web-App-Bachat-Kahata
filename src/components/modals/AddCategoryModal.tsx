@@ -2,14 +2,10 @@
 
 import React, { useState } from "react";
 import { X, CheckCircle2, Home, ShoppingBag, Tv, Layers, Navigation, Bus, HeartPulse, Shield, Book, Briefcase, Zap, Coffee } from "lucide-react";
+import { BUCKET_LABELS, type BucketType } from "@/core/utils/bucketConfig";
+import type { CategoryData } from "@/core/utils/categories";
 
-export interface CategoryData {
-  id: string;
-  name: string;
-  type: "expense" | "income";
-  color: string;
-  iconName: string;
-}
+export type { CategoryData };
 
 interface AddCategoryModalProps {
   isOpen: boolean;
@@ -46,6 +42,7 @@ export default function AddCategoryModal({
   const [name, setName] = useState("");
   const [selectedColor, setSelectedColor] = useState(PRESET_COLORS[0]);
   const [selectedIcon, setSelectedIcon] = useState("Layers");
+  const [bucket, setBucket] = useState<BucketType>("needs");
 
   if (!isOpen) return null;
 
@@ -58,16 +55,19 @@ export default function AddCategoryModal({
       name: name.trim(),
       type,
       color: selectedColor,
-      iconName: selectedIcon
+      iconName: selectedIcon,
+      // Buckets are an expense-only concept; income is grouped by source.
+      ...(type === "expense" ? { bucket } : {}),
     };
 
     if (onSuccess) onSuccess(newCategory);
-    
+
     // Reset state
     setName("");
     setType("expense");
     setSelectedColor(PRESET_COLORS[0]);
     setSelectedIcon("Layers");
+    setBucket("needs");
     onClose();
   };
 
@@ -114,6 +114,30 @@ export default function AddCategoryModal({
               </button>
             </div>
           </div>
+
+          {/* Bucket — expense only; drives the 50/30/20 Money Rule split */}
+          {type === "expense" && (
+            <div className="space-y-1.5">
+              <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">Counts Toward</span>
+              <div className="grid grid-cols-3 gap-2 p-1 bg-secondary rounded-xl">
+                {(Object.keys(BUCKET_LABELS) as BucketType[]).map((b) => (
+                  <button
+                    key={b}
+                    type="button"
+                    onClick={() => setBucket(b)}
+                    className={`py-2 text-xs font-bold rounded-lg transition-all ${
+                      bucket === b ? "bg-card text-foreground shadow-sm" : "text-foreground-secondary hover:text-foreground"
+                    }`}
+                  >
+                    {BUCKET_LABELS[b]}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] font-semibold text-foreground-muted">
+                Which side of your 50/30/20 split this spending lands on.
+              </p>
+            </div>
+          )}
 
           {/* Name */}
           <div className="space-y-1">

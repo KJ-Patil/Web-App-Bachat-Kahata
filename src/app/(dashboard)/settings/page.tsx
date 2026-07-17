@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { User, Lock, Globe, Languages, Trash2, ArrowRight, ShieldAlert, LogOut, CheckCircle2, Layers, Info, HelpCircle, Database, CloudUpload, Clock, RotateCcw, RefreshCw } from "lucide-react";
+import { User, Lock, Globe, Languages, Trash2, ArrowRight, ShieldAlert, LogOut, CheckCircle2, Layers, Info, HelpCircle, Database, CloudUpload, Clock, RotateCcw, RefreshCw, MessageSquare } from "lucide-react";
 import CurrencyPickerSheet from "@/components/modals/CurrencyPickerSheet";
 import LanguagePickerSheet from "@/components/modals/LanguagePickerSheet";
 import { auth } from "@/config/firebase";
@@ -363,6 +363,22 @@ export default function SettingsPage() {
                 <div>
                   <span className="font-bold text-sm text-foreground block">{t('settings.categoryManager')}</span>
                   <span className="text-[10px] font-semibold text-foreground-muted block">{t('settings.addArchiveTags')}</span>
+                </div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-icon-muted" />
+            </Link>
+
+            <Link
+              href="/settings/sms-gateway"
+              className="w-full flex items-center justify-between p-4 border-b border-border hover:bg-secondary transition-colors text-left"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center text-icon-default">
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="font-bold text-sm text-foreground block">SMS Gateway</span>
+                  <span className="text-[10px] font-semibold text-foreground-muted block">Fast2SMS credentials for reminders</span>
                 </div>
               </div>
               <ArrowRight className="w-4 h-4 text-icon-muted" />

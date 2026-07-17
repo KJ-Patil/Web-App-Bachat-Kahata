@@ -108,6 +108,30 @@ export interface GroupExpense {
 }
 
 /** A subscription the user added by hand (vs. auto-detected from transactions). */
+/**
+ * Fast2SMS gateway settings. The user brings their own Fast2SMS account, so
+ * this is a per-user credential rather than an app-wide key.
+ *
+ * Scoped to Fast2SMS's Quick route, which needs no DLT registration: no entity,
+ * sender ID, or pre-approved template — hence the single field. The trade-off is
+ * that numbers on the DND registry will not receive these messages.
+ *
+ * NOTE: no send path is wired up yet. Storing a key does not make the app send
+ * SMS; the reminder screen still simulates delivery. Sending for real needs a
+ * server route that holds the key, because anything reachable from the browser
+ * bundle is readable by anyone who opens DevTools.
+ */
+export interface SmsGatewayConfig {
+  enabled: boolean;
+  /** Fast2SMS authorization key (Dashboard → Dev API). */
+  apiKey: string;
+}
+
+export const DEFAULT_SMS_GATEWAY: SmsGatewayConfig = {
+  enabled: false,
+  apiKey: "",
+};
+
 export interface ManualSubscription {
   id: string;
   name: string;
@@ -129,6 +153,7 @@ export const KEYS = {
   manualSubscriptions: "manual_subscriptions",
   monthlyIncome: "monthly_income",
   moneyRuleSplit: "money_rule_split",
+  smsGateway: "sms_gateway",
 } as const;
 
 const STORE_EVENT = "datastore:change";
@@ -149,6 +174,9 @@ const SENSITIVE_KEYS: string[] = [
   KEYS.manualSubscriptions,
   KEYS.monthlyIncome,
   KEYS.moneyRuleSplit,
+  // Holds the user's own SMS gateway credentials — secret, so it must never sit
+  // in plaintext on disk.
+  KEYS.smsGateway,
 ];
 
 /**
@@ -714,6 +742,21 @@ export function setMoneyRuleSplit(split: MoneyRuleSplit): void {
   writeJSON(KEYS.moneyRuleSplit, split);
 }
 
+export function getSmsGateway(): SmsGatewayConfig {
+  const stored = readJSON<Partial<SmsGatewayConfig>>(KEYS.smsGateway, DEFAULT_SMS_GATEWAY);
+  // Read each field explicitly rather than spreading: a partial cloud doc can't
+  // leave a field undefined, and stale keys from an earlier config shape are
+  // dropped instead of riding along.
+  return {
+    enabled: stored?.enabled ?? DEFAULT_SMS_GATEWAY.enabled,
+    apiKey: stored?.apiKey ?? DEFAULT_SMS_GATEWAY.apiKey,
+  };
+}
+
+export function setSmsGateway(config: SmsGatewayConfig): void {
+  writeJSON(KEYS.smsGateway, config);
+}
+
 // ──────────────── DERIVED SELECTORS ────────────────
 const sum = (txs: Transaction[]) => txs.reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
 
@@ -1039,6 +1082,28 @@ export function useFamilyExpenses(): GroupExpense[] {
 
 // ──────────────── CLOUD BACKUP & RESTORE ────────────────
 
+/**
+ * The empty value for a synced key, used when a backup predates that key.
+ *
+ * Every synced key must be listed here if its shape is not an array: a missing
+ * case silently restores the key as `[]`, which would overwrite an object-shaped
+ * config with garbage.
+ */
+function defaultForKey(key: string): unknown {
+  switch (key) {
+    case KEYS.budgets:
+      return {};
+    case KEYS.moneyRuleSplit:
+      return { needs: 50, wants: 30, investments: 20 };
+    case KEYS.monthlyIncome:
+      return 0;
+    case KEYS.smsGateway:
+      return DEFAULT_SMS_GATEWAY;
+    default:
+      return [];
+  }
+}
+
 export interface BackupRecord {
   id: string;
   createdAt: string;
@@ -1065,7 +1130,7 @@ export async function createCloudBackup(label?: string): Promise<string> {
     // Read the decrypted value from the in-memory cache (localStorage holds
     // ciphertext). The backup doc, like appData, is plaintext in the cloud.
     const val = memCache.get(key);
-    backupData[key] = val !== undefined ? val : (key === KEYS.budgets ? {} : key === KEYS.moneyRuleSplit ? { needs: 50, wants: 30, investments: 20 } : key === KEYS.monthlyIncome ? 0 : []);
+    backupData[key] = val !== undefined ? val : defaultForKey(key);
   }
   
   const backupRecord = {
@@ -1132,7 +1197,7 @@ export async function restoreCloudBackup(backupId: string): Promise<void> {
   // Overwrite the decrypted cache + encrypted localStorage + cloud. writeJSON
   // handles all three (memCache, ciphertext to disk, plaintext to Firestore).
   for (const key of SYNCED_KEYS) {
-    const val = backupData[key] !== undefined ? backupData[key] : (key === KEYS.budgets ? {} : key === KEYS.moneyRuleSplit ? { needs: 50, wants: 30, investments: 20 } : key === KEYS.monthlyIncome ? 0 : []);
+    const val = backupData[key] !== undefined ? backupData[key] : defaultForKey(key);
     writeJSON(key, val);
   }
 

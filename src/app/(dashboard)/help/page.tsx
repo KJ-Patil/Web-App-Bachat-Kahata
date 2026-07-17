@@ -10,6 +10,23 @@ interface FAQItem {
   aKey: string;
 }
 
+/**
+ * Support contact, read from config instead of living in the source tree, so
+ * the number is set per environment and no placeholder can ship as a live link.
+ * When unset the contact cards are hidden rather than rendered pointing at
+ * nobody.
+ *
+ * NEXT_PUBLIC_ values are inlined at build time and frozen into the bundle, so
+ * changing the number still needs a rebuild — it just no longer needs a code
+ * edit. Keep this a full literal `process.env.X` reference: Next substitutes
+ * these textually, and a computed key would silently read undefined.
+ */
+const SUPPORT_PHONE = (process.env.NEXT_PUBLIC_SUPPORT_PHONE ?? "").trim();
+
+/** wa.me takes bare digits; `tel:` takes the E.164 "+" form. */
+const SUPPORT_PHONE_DIGITS = SUPPORT_PHONE.replace(/\D/g, "");
+const HAS_SUPPORT_PHONE = SUPPORT_PHONE_DIGITS.length > 0;
+
 export default function HelpSupportPage() {
   const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState("");
@@ -52,7 +69,8 @@ export default function HelpSupportPage() {
         </p>
       </div>
 
-      {/* Support Options Grid */}
+      {/* Support Options Grid — omitted entirely when no contact is configured */}
+      {HAS_SUPPORT_PHONE && (
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         {/* WhatsApp Card */}
         <div className="group relative overflow-hidden bg-card border border-border-strong rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between">
@@ -72,7 +90,9 @@ export default function HelpSupportPage() {
           </div>
           <div className="mt-6 pt-2">
             <a
-              href="https://wa.me/919876543210?text=Hi%20Bachat%20Khata%20Support,%20I%20need%20assistance."
+              href={`https://wa.me/${SUPPORT_PHONE_DIGITS}?text=${encodeURIComponent(
+                "Hi Bachat Khata Support, I need assistance."
+              )}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center w-full px-4 py-2.5 bg-success hover:bg-success/90 text-white font-bold text-sm rounded-xl shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
@@ -101,7 +121,7 @@ export default function HelpSupportPage() {
           </div>
           <div className="mt-6 pt-2">
             <a
-              href="tel:+919876543210"
+              href={`tel:${SUPPORT_PHONE}`}
               className="inline-flex items-center justify-center w-full px-4 py-2.5 bg-primary hover:bg-primary-hover text-white font-bold text-sm rounded-xl shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
             >
               <Phone className="w-4 h-4 mr-2" />
@@ -110,6 +130,7 @@ export default function HelpSupportPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* FAQ Section */}
       <section className="space-y-6">

@@ -16,7 +16,10 @@ import {
   DollarSign,
   type LucideIcon,
 } from "lucide-react";
-import type { CategoryData } from "@/components/modals/AddCategoryModal";
+import {
+  CATEGORY_BUCKET_MAP,
+  type BucketType,
+} from "@/core/utils/bucketConfig";
 
 /**
  * Single source of truth for transaction/budget categories.
@@ -31,6 +34,28 @@ import type { CategoryData } from "@/components/modals/AddCategoryModal";
  * (`Transaction.category`, budget map keys), so the helpers expose names as the
  * stable identity — do not switch call sites to the internal `id`.
  */
+
+/**
+ * A category as stored in `localStorage.custom_categories`.
+ *
+ * Defined here rather than alongside the modal that creates it because
+ * `bucketConfig` → `categories` → modal would otherwise form an import cycle.
+ * `AddCategoryModal` re-exports this type for its existing consumers.
+ */
+export interface CategoryData {
+  id: string;
+  name: string;
+  type: "expense" | "income";
+  color: string;
+  iconName: string;
+  /**
+   * Which 50/30/20 bucket this category's spending counts toward. Expense-only
+   * (buckets are meaningless for income) and optional, because categories
+   * created before buckets were user-selectable have no stored value — those
+   * fall back to CATEGORY_BUCKET_MAP. See `resolveBucketForCategory`.
+   */
+  bucket?: BucketType;
+}
 
 const STORAGE_KEY = "custom_categories";
 const ARCHIVED_KEY = "archived_categories";
@@ -66,11 +91,11 @@ export function resolveCategoryIcon(iconName: string): LucideIcon {
  * choice.
  */
 export const DEFAULT_CATEGORIES: CategoryData[] = [
-  { id: "cat-1", name: "Housing", type: "expense", color: "#1d4ed8", iconName: "Home" },
-  { id: "cat-2", name: "Groceries", type: "expense", color: "#059669", iconName: "ShoppingBag" },
-  { id: "cat-3", name: "Entertainment", type: "expense", color: "#7c3aed", iconName: "Tv" },
-  { id: "cat-4", name: "Investment", type: "expense", color: "#0891b2", iconName: "Layers" },
-  { id: "cat-5", name: "Travel", type: "expense", color: "#ea580c", iconName: "Navigation" },
+  { id: "cat-1", name: "Housing", type: "expense", color: "#1d4ed8", iconName: "Home", bucket: "needs" },
+  { id: "cat-2", name: "Groceries", type: "expense", color: "#059669", iconName: "ShoppingBag", bucket: "needs" },
+  { id: "cat-3", name: "Entertainment", type: "expense", color: "#7c3aed", iconName: "Tv", bucket: "wants" },
+  { id: "cat-4", name: "Investment", type: "expense", color: "#0891b2", iconName: "Layers", bucket: "investments" },
+  { id: "cat-5", name: "Travel", type: "expense", color: "#ea580c", iconName: "Navigation", bucket: "wants" },
   { id: "cat-6", name: "Salary", type: "income", color: "#65a30d", iconName: "Briefcase" },
   { id: "cat-7", name: "Investment", type: "income", color: "#0891b2", iconName: "TrendingUp" },
   { id: "cat-8", name: "Gift", type: "income", color: "#db2777", iconName: "Gift" },
@@ -210,8 +235,8 @@ export function isIncomeExtraCategory(name: string): boolean {
 }
 
 /**
- * Maps an income category name → its income group. Mirrors `getBucketForCategory`
- * (bucketConfig.ts) for the income side. Built from INCOME_EXTRA_CATEGORY_GROUPS,
+ * Maps an income category name → its income group. Mirrors
+ * `resolveBucketForCategory` for the income side. Built from INCOME_EXTRA_CATEGORY_GROUPS,
  * plus the default income categories from DEFAULT_CATEGORIES that aren't in the
  * extra groups. Returns null for unknown names.
  */
@@ -269,4 +294,31 @@ export function getActiveCategories(type?: "expense" | "income"): CategoryData[]
   return getStoredCategories()
     .filter((c) => !archived.includes(c.id))
     .filter((c) => (type ? c.type === type : true));
+}
+
+/**
+ * The 50/30/20 bucket an expense category counts toward — the app-wide answer,
+ * and what every spending rollup should call.
+ *
+ * Resolution is layered, most specific first:
+ *   1. the bucket the user picked for their own category (Category Manager);
+ *   2. CATEGORY_BUCKET_MAP, for the built-in and "Other" category names;
+ *   3. "needs", as a last resort.
+ *
+ * Layer 2 is why no migration is needed: categories stored before `bucket`
+ * existed resolve exactly as they did when the map was the only lookup.
+ *
+ * Archived categories are still resolved — old transactions keep their category
+ * name, and their history must stay in the bucket the user assigned.
+ */
+export function resolveBucketForCategory(name: string): BucketType {
+  if (!name) return "needs";
+  const normalized = name.trim();
+
+  const userCategory = getStoredCategories().find(
+    (c) => c.type === "expense" && c.name === normalized && c.bucket
+  );
+  if (userCategory?.bucket) return userCategory.bucket;
+
+  return CATEGORY_BUCKET_MAP[normalized] || "needs";
 }

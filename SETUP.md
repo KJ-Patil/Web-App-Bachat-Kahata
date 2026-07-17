@@ -71,6 +71,22 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-XXXXXXXXXX
 
 Get these values from **Firebase Console → Project settings → Your apps → Web app**.
 
+### Support contact (optional)
+
+The Help page's WhatsApp and Call buttons dial whatever number this is set to,
+in E.164 format:
+
+```bash
+NEXT_PUBLIC_SUPPORT_PHONE=+911234567890
+```
+
+Leave it unset and the two contact cards are hidden — the FAQs still render. It
+is deliberately not defaulted: a placeholder number here is a live link that
+sends real users to a stranger.
+
+Like all `NEXT_PUBLIC_` values it is baked in at build time, so changing it
+requires a rebuild.
+
 ### In the Firebase console, enable:
 1. **Authentication → Sign-in method** → enable **Email/Password** and **Google**.
 2. **Firestore Database** → create a database (production or test mode).

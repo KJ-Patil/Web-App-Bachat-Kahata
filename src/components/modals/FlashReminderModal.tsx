@@ -5,10 +5,7 @@ import {
   X,
   MessageCircle,
   Smartphone,
-  Send,
-  Loader2,
   Globe,
-  CheckCircle,
   User,
   Sliders,
   Sparkles,
@@ -18,7 +15,6 @@ import {
   generateReminderMessage,
   getWhatsAppLink,
   getSmsLink,
-  sendTwilioSmsSimulated,
   type ReminderTone,
   type ReminderLang,
   type ReminderRelation,
@@ -48,7 +44,7 @@ export default function FlashReminderModal({
   const [phone, setPhone] = useState(recipientPhone);
   const [tone, setTone] = useState<ReminderTone>("friendly");
   const [lang, setLang] = useState<ReminderLang>("en");
-  const [channel, setChannel] = useState<"whatsapp" | "sms" | "twilio">("whatsapp");
+  const [channel, setChannel] = useState<"whatsapp" | "sms">("whatsapp");
   
   // Lazy initialize custom message draft
   const [customMessage, setCustomMessage] = useState(() =>
@@ -61,10 +57,6 @@ export default function FlashReminderModal({
       currency
     )
   );
-
-  // Status states
-  const [isSending, setIsSending] = useState(false);
-  const [isSentSuccess, setIsSentSuccess] = useState(false);
 
   if (!isOpen) return null;
 
@@ -149,23 +141,6 @@ export default function FlashReminderModal({
       toast.success("Native SMS application triggered!");
       if (onSendSuccess) onSendSuccess();
       onClose();
-    } else if (channel === "twilio") {
-      setIsSending(true);
-      try {
-        await sendTwilioSmsSimulated(phone, customMessage, recipientName);
-        setIsSentSuccess(true);
-        toast.success(`Simulated Twilio SMS sent to ${recipientName}!`);
-        
-        // Wait 1.2 seconds on success screen, then close
-        setTimeout(() => {
-          if (onSendSuccess) onSendSuccess();
-          onClose();
-        }, 1200);
-      } catch {
-        toast.error("Failed to send simulated SMS.");
-      } finally {
-        setIsSending(false);
-      }
     }
   };
 
@@ -196,18 +171,6 @@ export default function FlashReminderModal({
 
         {/* Content Form */}
         <form onSubmit={handleSend} className="flex-1 overflow-y-auto p-6 space-y-6">
-          {isSentSuccess ? (
-            <div className="flex flex-col items-center justify-center py-10 space-y-4 animate-in zoom-in-95 duration-200">
-              <CheckCircle className="w-16 h-16 text-success animate-bounce" />
-              <div className="text-center space-y-1">
-                <h4 className="text-lg font-black text-foreground">Message Dispatched!</h4>
-                <p className="text-xs font-semibold text-foreground-muted">
-                  Gateway status: Sent via Twilio Secure SMS API.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <>
               {/* Form Input fields */}
               <div className="grid grid-cols-1 gap-4">
                 {/* Contact Info Readonly / Editable */}
@@ -301,7 +264,7 @@ export default function FlashReminderModal({
                   <label className="text-[10px] font-bold uppercase tracking-wider text-foreground-muted">
                     Dispatch Channel
                   </label>
-                  <div className="grid grid-cols-3 gap-2.5">
+                  <div className="grid grid-cols-2 gap-2.5">
                     {/* WhatsApp */}
                     <button
                       type="button"
@@ -329,20 +292,6 @@ export default function FlashReminderModal({
                       <Smartphone className="w-5 h-5" />
                       <span className="text-[10px] font-black uppercase tracking-wider">SMS Native</span>
                     </button>
-
-                    {/* Twilio SMS */}
-                    <button
-                      type="button"
-                      onClick={() => setChannel("twilio")}
-                      className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all cursor-pointer text-center space-y-1.5 ${
-                        channel === "twilio"
-                          ? "bg-brand/10 border-brand text-brand"
-                          : "bg-secondary/40 border-border hover:bg-secondary text-foreground-secondary hover:border-icon-muted"
-                      }`}
-                    >
-                      <Send className="w-5 h-5" />
-                      <span className="text-[10px] font-black uppercase tracking-wider">Twilio SMS</span>
-                    </button>
                   </div>
                 </div>
               </div>
@@ -351,40 +300,25 @@ export default function FlashReminderModal({
               <div className="pt-2">
                 <button
                   type="submit"
-                  disabled={isSending}
                   className={`w-full py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.99] select-none ${
                     channel === "whatsapp"
                       ? "bg-success text-success-foreground hover:brightness-110"
-                      : channel === "sms"
-                      ? "bg-primary text-primary-foreground hover:brightness-110"
-                      : "bg-brand text-white hover:brightness-110"
-                  } ${isSending ? "opacity-70 cursor-not-allowed" : ""}`}
+                      : "bg-primary text-primary-foreground hover:brightness-110"
+                  }`}
                 >
-                  {isSending ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Dispatched Sim Request...
-                    </>
-                  ) : channel === "whatsapp" ? (
+                  {channel === "whatsapp" ? (
                     <>
                       <MessageCircle className="w-4 h-4 stroke-[2.5px]" />
                       Launch WhatsApp Chat
                     </>
-                  ) : channel === "sms" ? (
+                  ) : (
                     <>
                       <Smartphone className="w-4 h-4" />
                       Open Device SMS App
                     </>
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4" />
-                      Dispatch Simulated Twilio SMS
-                    </>
                   )}
                 </button>
               </div>
-            </>
-          )}
         </form>
       </div>
     </div>

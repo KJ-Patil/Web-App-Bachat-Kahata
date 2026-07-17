@@ -1,5 +1,5 @@
 import type { Transaction, BudgetMap } from "@/core/store/dataStore";
-import { getBucketForCategory, BUCKET_PERCENTAGES } from "@/core/utils/bucketConfig";
+import { resolveBucketForCategory } from "@/core/utils/categories";
 
 export interface BucketSummary {
   budget: number;       // Target allocation limit based on income split
@@ -39,7 +39,7 @@ export function computeMoneyRule(
   let investmentsSpent = 0;
 
   for (const tx of monthlyExpenses) {
-    const bucket = getBucketForCategory(tx.category);
+    const bucket = resolveBucketForCategory(tx.category);
     if (bucket === "needs") {
       needsSpent += tx.amount;
     } else if (bucket === "wants") {
@@ -55,7 +55,7 @@ export function computeMoneyRule(
   let investmentsAllocated = 0;
 
   for (const [category, budgetLimit] of Object.entries(budgets)) {
-    const bucket = getBucketForCategory(category);
+    const bucket = resolveBucketForCategory(category);
     if (bucket === "needs") {
       needsAllocated += budgetLimit;
     } else if (bucket === "wants") {

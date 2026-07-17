@@ -6,7 +6,14 @@ export const BUCKET_PERCENTAGES: Record<BucketType, number> = {
   investments: 0.20,
 };
 
-// Maps categories to their respective 50/30/20 buckets
+/**
+ * Built-in category name → 50/30/20 bucket.
+ *
+ * This is the *fallback* layer only. A user's own category carries its own
+ * `bucket` (see CategoryData), which wins over this map — so resolve buckets
+ * through `resolveBucketForCategory` in core/utils/categories, never by reading
+ * this map directly, or user-created categories will be misfiled as needs.
+ */
 export const CATEGORY_BUCKET_MAP: Record<string, BucketType> = {
   // Needs
   "Rent": "needs",
@@ -85,16 +92,6 @@ export const CATEGORY_BUCKET_MAP: Record<string, BucketType> = {
   "Property Investment": "investments",
   "Child Savings Plan": "investments",
 };
-
-/**
- * Returns the bucket for a given category name.
- * Default is "needs" for unmapped/uncategorized expenses.
- */
-export function getBucketForCategory(category: string): BucketType {
-  if (!category) return "needs";
-  const normalized = category.trim();
-  return CATEGORY_BUCKET_MAP[normalized] || "needs";
-}
 
 /**
  * The expense category a savings-goal deposit is logged under, per the bucket

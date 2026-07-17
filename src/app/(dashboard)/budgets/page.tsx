@@ -6,8 +6,7 @@ import { formatAmount } from "@/core/utils/currencyManager";
 import SetBudgetModal from "@/components/modals/SetBudgetModal";
 import { getBudgets, getTransactions, useTransactions, useBudgets, useMonthlyIncome, useMoneyRuleSplit, setMonthlyIncome, setMoneyRuleSplit } from "@/core/store/dataStore";
 import { computeMoneyRule } from "@/core/insights/moneyRule";
-import { getBucketForCategory } from "@/core/utils/bucketConfig";
-import { getActiveCategories, resolveCategoryIcon, getIncomeGroupForCategory } from "@/core/utils/categories";
+import { getActiveCategories, resolveCategoryIcon, getIncomeGroupForCategory, resolveBucketForCategory } from "@/core/utils/categories";
 import { useTranslation } from "@/i18n/i18nContext";
 import { ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell, Tooltip } from "recharts";
 
@@ -186,7 +185,7 @@ export default function BudgetsPage() {
     };
 
     for (const tx of filtered) {
-      const bucket = getBucketForCategory(tx.category);
+      const bucket = resolveBucketForCategory(tx.category);
       if (groups[bucket]) {
         groups[bucket].push(tx);
       }

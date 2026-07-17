@@ -3,8 +3,14 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, Archive, ArchiveRestore, Layers } from "lucide-react";
-import AddCategoryModal, { CategoryData } from "@/components/modals/AddCategoryModal";
-import { CATEGORY_ICONS as iconMap, DEFAULT_CATEGORIES } from "@/core/utils/categories";
+import AddCategoryModal from "@/components/modals/AddCategoryModal";
+import {
+  CATEGORY_ICONS as iconMap,
+  DEFAULT_CATEGORIES,
+  resolveBucketForCategory,
+  type CategoryData,
+} from "@/core/utils/categories";
+import { BUCKET_LABELS, type BucketType } from "@/core/utils/bucketConfig";
 
 export default function CategoryManagerPage() {
   const [categories, setCategories] = useState<CategoryData[]>([]);
@@ -30,6 +36,17 @@ export default function CategoryManagerPage() {
 
   const handleAddCategory = (newCat: CategoryData) => {
     const updated = [...categories, newCat];
+    setCategories(updated);
+    localStorage.setItem("custom_categories", JSON.stringify(updated));
+  };
+
+  /**
+   * Persist the bucket a user picked for one of their categories. Categories
+   * created before buckets were selectable have none stored, so the row shows
+   * the resolved fallback — saving here makes that choice explicit.
+   */
+  const handleBucketChange = (id: string, bucket: BucketType) => {
+    const updated = categories.map((c) => (c.id === id ? { ...c, bucket } : c));
     setCategories(updated);
     localStorage.setItem("custom_categories", JSON.stringify(updated));
   };
@@ -88,26 +105,50 @@ export default function CategoryManagerPage() {
             {activeCategories.map(cat => {
               const Icon = iconMap[cat.iconName] || Layers;
               return (
-                <div key={cat.id} className="bg-card border border-border p-3 rounded-xl flex items-center justify-between group">
-                  <div className="flex items-center gap-3">
-                    <div 
-                      className="w-10 h-10 rounded-lg flex items-center justify-center text-white"
-                      style={{ backgroundColor: cat.color }}
+                <div key={cat.id} className="bg-card border border-border p-3 rounded-xl space-y-3 group">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-10 h-10 rounded-lg flex items-center justify-center text-white"
+                        style={{ backgroundColor: cat.color }}
+                      >
+                        <Icon className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <span className="font-bold text-sm text-foreground block">{cat.name}</span>
+                        <span className="text-[10px] font-bold text-foreground-muted uppercase tracking-wider">{cat.type}</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => toggleArchive(cat.id)}
+                      className="p-2 text-icon-muted hover:text-warning hover:bg-warning-light rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                      title="Archive Category"
                     >
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <span className="font-bold text-sm text-foreground block">{cat.name}</span>
-                      <span className="text-[10px] font-bold text-foreground-muted uppercase tracking-wider">{cat.type}</span>
-                    </div>
+                      <Archive className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button 
-                    onClick={() => toggleArchive(cat.id)}
-                    className="p-2 text-icon-muted hover:text-warning hover:bg-warning-light rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                    title="Archive Category"
-                  >
-                    <Archive className="w-4 h-4" />
-                  </button>
+
+                  {/* Bucket selector — expense only; drives the 50/30/20 split */}
+                  {cat.type === "expense" && (() => {
+                    const active = cat.bucket ?? resolveBucketForCategory(cat.name);
+                    return (
+                      <div className="grid grid-cols-3 gap-1 p-1 bg-secondary rounded-lg">
+                        {(Object.keys(BUCKET_LABELS) as BucketType[]).map((b) => (
+                          <button
+                            key={b}
+                            onClick={() => handleBucketChange(cat.id, b)}
+                            className={`py-1.5 text-[10px] font-bold rounded-md transition-all ${
+                              active === b
+                                ? "bg-card text-foreground shadow-sm"
+                                : "text-foreground-secondary hover:text-foreground"
+                            }`}
+                          >
+                            {BUCKET_LABELS[b]}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
