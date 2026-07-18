@@ -11,6 +11,7 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import AddTransactionModal from "@/components/modals/AddTransactionModal";
 import CurrencyPickerSheet from "@/components/modals/CurrencyPickerSheet";
 import VoiceLoggingModal from "@/components/voice/VoiceLoggingModal";
+import GlobalFloatingCalculator from "@/components/inputs/GlobalFloatingCalculator";
 import { refreshExchangeRates } from "@/core/utils/currencyManager";
 import { useTranslation } from "@/i18n/i18nContext";
 
@@ -361,7 +362,7 @@ export default function DashboardLayout({
       />
 
       {/* Voice Logging Modal */}
-      <VoiceLoggingModal 
+      <VoiceLoggingModal
         isOpen={isVoiceOpen}
         onClose={() => setIsVoiceOpen(false)}
         onSuccess={() => {
@@ -370,6 +371,10 @@ export default function DashboardLayout({
           }
         }}
       />
+
+      {/* Floating calculator — only inside the authenticated app, not on
+          the login/register screens (which the root layout also wraps). */}
+      <GlobalFloatingCalculator />
 
       {/* Currency Picker Sheet */}
       <CurrencyPickerSheet 
