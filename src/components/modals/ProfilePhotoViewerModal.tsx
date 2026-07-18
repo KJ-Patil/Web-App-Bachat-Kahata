@@ -48,7 +48,7 @@ export default function ProfilePhotoViewerModal({
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="w-72 h-72 max-w-[80vw] max-h-[80vw] rounded-full overflow-hidden shadow-2xl">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={avatar} alt={name} className="w-full h-full object-cover" />
+          <img src={avatar} alt={name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
         </div>
       </div>
 

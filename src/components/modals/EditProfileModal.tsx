@@ -115,7 +115,7 @@ export default function EditProfileModal({
               <div className="w-24 h-24 rounded-full bg-primary-lighter text-primary flex items-center justify-center border-4 border-background shadow-inner overflow-hidden">
                 {avatar ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={avatar} alt="Profile preview" className="w-full h-full object-cover" />
+                  <img src={avatar} alt="Profile preview" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                 ) : (
                   <User className="w-12 h-12" />
                 )}

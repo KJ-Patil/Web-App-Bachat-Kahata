@@ -168,7 +168,7 @@ export default function WorkspacePage() {
           <div className="w-12 h-12 rounded-full bg-primary-lighter text-primary flex items-center justify-center border-2 border-background shadow-inner shrink-0 overflow-hidden">
             {userAvatar ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={userAvatar} alt={userName} className="w-full h-full object-cover" />
+              <img src={userAvatar} alt={userName} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
             ) : (
               <User className="w-6 h-6" />
             )}

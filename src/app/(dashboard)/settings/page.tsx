@@ -343,7 +343,7 @@ export default function SettingsPage() {
         >
           {userAvatar ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={userAvatar} alt={userName} className="w-full h-full object-cover" />
+            <img src={userAvatar} alt={userName} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
           ) : (
             <User className="w-10 h-10" />
           )}
