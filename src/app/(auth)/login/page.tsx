@@ -192,6 +192,9 @@ export default function LoginPage() {
         JSON.stringify({
           email: user.email,
           name: user.displayName || "Google User",
+          // Google returns the account's profile photo here — seed it as the
+          // avatar so it shows by default (the user can still change it later).
+          avatarUrl: user.photoURL ?? null,
         })
       );
 

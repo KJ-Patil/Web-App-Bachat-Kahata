@@ -2,9 +2,12 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { User, Lock, Globe, Languages, Trash2, ArrowRight, ShieldAlert, LogOut, CheckCircle2, Layers, Info, HelpCircle, Database, CloudUpload, Clock, RotateCcw, RefreshCw, MessageSquare } from "lucide-react";
+import { User, Lock, Globe, Languages, Trash2, ArrowRight, ShieldAlert, LogOut, CheckCircle2, Layers, Info, HelpCircle, Database, CloudUpload, Clock, RotateCcw, RefreshCw, MessageSquare, Pencil } from "lucide-react";
+import { toast } from "sonner";
 import CurrencyPickerSheet from "@/components/modals/CurrencyPickerSheet";
 import LanguagePickerSheet from "@/components/modals/LanguagePickerSheet";
+import EditProfileModal from "@/components/modals/EditProfileModal";
+import ProfilePhotoViewerModal from "@/components/modals/ProfilePhotoViewerModal";
 import { auth } from "@/config/firebase";
 import {
   EmailAuthProvider,
@@ -12,6 +15,7 @@ import {
   reauthenticateWithCredential,
   reauthenticateWithPopup,
   onAuthStateChanged,
+  updateProfile,
   type User as FirebaseUser,
 } from "firebase/auth";
 import {
@@ -39,6 +43,8 @@ export default function SettingsPage() {
   const [userName, setUserName] = useState("Guest");
   const [userEmail, setUserEmail] = useState("");
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
 
   // Identity re-verification for the destructive wipe — real Firebase
   // re-authentication (no fake on-screen code, no email backend needed).
@@ -202,6 +208,52 @@ export default function SettingsPage() {
     window.location.href = "/pin-lock?action=change";
   };
 
+  // Persist an edited profile. Name + photo live in the local `user_session`
+  // (the photo is a small data URL — see EditProfileModal), so they survive a
+  // reload on this device. The display name is also pushed to Firebase Auth,
+  // best-effort, so it follows the account; the photo stays device-local
+  // because Firebase Auth's photoURL can't hold a full data URL.
+  const handleSaveProfile = (name: string, avatar: string | null) => {
+    setUserName(name);
+    setUserAvatar(avatar);
+
+    try {
+      const session = localStorage.getItem("user_session");
+      const parsed = session ? JSON.parse(session) : {};
+      localStorage.setItem(
+        "user_session",
+        JSON.stringify({ ...parsed, name, avatarUrl: avatar })
+      );
+    } catch {
+      // A malformed session shouldn't block the in-memory update above.
+    }
+
+    const user = auth.currentUser ?? fbUser;
+    if (user) {
+      // Fire-and-forget: a failed cloud sync must not lose the local edit.
+      void updateProfile(user, { displayName: name }).catch(() => {});
+    }
+
+    toast.success("Profile updated.");
+  };
+
+  // Clear just the photo, keeping the name. Persists to the local session so the
+  // default (Google) photo doesn't reappear on the next render.
+  const handleRemovePhoto = () => {
+    setUserAvatar(null);
+    try {
+      const session = localStorage.getItem("user_session");
+      const parsed = session ? JSON.parse(session) : {};
+      localStorage.setItem(
+        "user_session",
+        JSON.stringify({ ...parsed, avatarUrl: null })
+      );
+    } catch {
+      // In-memory removal above still applies.
+    }
+    toast.success("Profile photo removed.");
+  };
+
   // Actually wipe the data and show the success stage
   const purgeData = () => {
     clearFinancialData(); // Push empty state to Firestore to clear remote data
@@ -283,14 +335,22 @@ export default function SettingsPage() {
 
       {/* User Profile Module */}
       <section className="bg-card border border-border-strong rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row items-center gap-6">
-        <div className="w-20 h-20 rounded-full bg-primary-lighter text-primary flex items-center justify-center border-4 border-background shadow-inner shrink-0 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => (userAvatar ? setIsPhotoViewerOpen(true) : setIsEditProfileOpen(true))}
+          className="group relative w-20 h-20 rounded-full bg-primary-lighter text-primary flex items-center justify-center border-4 border-background shadow-inner shrink-0 overflow-hidden cursor-pointer"
+          title={userAvatar ? "View profile photo" : "Add profile photo"}
+        >
           {userAvatar ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={userAvatar} alt={userName} className="w-full h-full object-cover" />
           ) : (
             <User className="w-10 h-10" />
           )}
-        </div>
+          <span className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <Pencil className="w-5 h-5 text-white" />
+          </span>
+        </button>
         <div className="flex-1 text-center sm:text-left space-y-1">
           <h2 className="text-xl font-black text-foreground">{userName}</h2>
           <p className="text-sm font-semibold text-foreground-secondary">{userEmail || t('settings.noEmailOnFile')}</p>
@@ -299,12 +359,40 @@ export default function SettingsPage() {
           </span>
         </div>
         <div className="flex flex-col gap-3 w-full sm:w-auto">
+          <button onClick={() => setIsEditProfileOpen(true)} className="btn-secondary text-xs flex items-center justify-center gap-2">
+            <Pencil className="w-4 h-4" />
+            Edit Profile
+          </button>
+          {userAvatar && (
+            <button onClick={handleRemovePhoto} className="btn-secondary text-xs flex items-center justify-center gap-2 text-error">
+              <Trash2 className="w-4 h-4" />
+              Remove Photo
+            </button>
+          )}
           <button onClick={resetPin} className="btn-secondary text-xs flex items-center justify-center gap-2">
             <Lock className="w-4 h-4" />
             {t('settings.resetPin')}
           </button>
         </div>
       </section>
+
+      <EditProfileModal
+        isOpen={isEditProfileOpen}
+        onClose={() => setIsEditProfileOpen(false)}
+        initialName={userName}
+        initialAvatar={userAvatar}
+        onSave={handleSaveProfile}
+      />
+
+      {userAvatar && (
+        <ProfilePhotoViewerModal
+          isOpen={isPhotoViewerOpen}
+          onClose={() => setIsPhotoViewerOpen(false)}
+          avatar={userAvatar}
+          name={userName}
+          onDelete={handleRemovePhoto}
+        />
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Preference Matrices */}

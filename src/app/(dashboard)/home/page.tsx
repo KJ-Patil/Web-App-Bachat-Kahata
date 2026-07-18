@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Bell, ArrowUpRight, ArrowDownRight, Wallet, Target, Activity, Calendar, Inbox, PiggyBank } from "lucide-react";
+import { Bell, ArrowUpRight, ArrowDownRight, Wallet, Target, Activity, Calendar, Inbox, PiggyBank, User } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
 import SmsPasteZone from "@/components/automation/SmsPasteZone";
 import SafeToSpendCard from "@/components/dashboard/SafeToSpendCard";
@@ -42,6 +42,18 @@ export default function WorkspacePage() {
       }
     }
     return "Guest";
+  });
+  const [userAvatar] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const session = localStorage.getItem("user_session");
+    if (session) {
+      try {
+        return JSON.parse(session).avatarUrl ?? null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
   });
   const [activeCurrency, setActiveCurrency] = useState("INR");
   const [showNotifications, setShowNotifications] = useState(false);
@@ -151,13 +163,24 @@ export default function WorkspacePage() {
     <div className="flex-1 flex flex-col p-6 space-y-6 md:p-8 max-w-7xl mx-auto w-full">
       {/* ────────────────── HEADER ────────────────── */}
       <header className="flex justify-between items-center bg-card border border-border p-5 rounded-2xl shadow-sm">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-extrabold text-foreground tracking-tight sm:text-3xl">
-            {getGreeting()}, {userName}
-          </h1>
-          <p className="text-sm font-medium text-foreground-muted">
-            {t('home.financialOverview')}
-          </p>
+        <div className="flex items-center gap-3">
+          {/* Profile photo beside the greeting — set on the Settings page. */}
+          <div className="w-12 h-12 rounded-full bg-primary-lighter text-primary flex items-center justify-center border-2 border-background shadow-inner shrink-0 overflow-hidden">
+            {userAvatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={userAvatar} alt={userName} className="w-full h-full object-cover" />
+            ) : (
+              <User className="w-6 h-6" />
+            )}
+          </div>
+          <div className="space-y-1">
+            <h1 className="text-2xl font-extrabold text-foreground tracking-tight sm:text-3xl">
+              {getGreeting()}, {userName}
+            </h1>
+            <p className="text-sm font-medium text-foreground-muted">
+              {t('home.financialOverview')}
+            </p>
+          </div>
         </div>
 
         {/* Notifications Bell */}
