@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Cloud-backed user profile (display name + avatar).
  *
@@ -16,6 +18,7 @@
  * account (the security rules would reject it anyway — this is the second lock).
  */
 
+import { useSyncExternalStore } from "react";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import { auth, db } from "@/config/firebase";
@@ -30,6 +33,99 @@ export interface UserProfile {
 /** What gets cached in localStorage under `user_session`. */
 export interface SessionProfile extends UserProfile {
   email: string | null;
+}
+
+// ──────────────── LOCAL SESSION: A SUBSCRIBED STORE ────────────────
+// Screens used to read `user_session` once, in a mount-time effect or a
+// useState initializer, and never look again. Anything that changed the profile
+// after that read — an edit on the Settings page, the rehydrate that runs at
+// login — stayed invisible until a full page reload. Reading it through a
+// subscription instead means every screen re-renders the moment it changes.
+
+const SESSION_KEY = "user_session";
+/** Same-tab change signal; the `storage` event only fires in *other* tabs. */
+const SESSION_EVENT = "bachat:session-profile";
+
+/** Stable empty snapshot — must be a constant so React sees an unchanged ref. */
+const EMPTY_SESSION: SessionProfile = { email: null, name: "", avatarUrl: null };
+
+// useSyncExternalStore calls getSnapshot on every render and compares by
+// reference, so a fresh object each time would loop forever. Cache the parsed
+// result and reuse it until the raw string actually changes.
+let cachedRaw: string | null = null;
+let cachedSession: SessionProfile = EMPTY_SESSION;
+
+/**
+ * The cached session, validated on the way out. It lives in localStorage, so it
+ * is parsed as untrusted input even though this app is what wrote it.
+ */
+export function readSessionProfile(): SessionProfile {
+  if (typeof window === "undefined") return EMPTY_SESSION;
+
+  const raw = localStorage.getItem(SESSION_KEY);
+  if (raw === cachedRaw) return cachedSession;
+  cachedRaw = raw;
+
+  if (!raw) {
+    cachedSession = EMPTY_SESSION;
+    return cachedSession;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    cachedSession = {
+      email: typeof parsed.email === "string" ? parsed.email : null,
+      name: sanitizeDisplayName(parsed.name),
+      avatarUrl: sanitizeAvatarUrl(parsed.avatarUrl),
+    };
+  } catch {
+    cachedSession = EMPTY_SESSION;
+  }
+  return cachedSession;
+}
+
+/** Write the session cache and wake every subscriber in this tab. */
+export function writeSessionProfile(session: SessionProfile): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(
+    SESSION_KEY,
+    JSON.stringify({
+      email: session.email,
+      name: sanitizeDisplayName(session.name),
+      avatarUrl: sanitizeAvatarUrl(session.avatarUrl),
+    })
+  );
+  // Invalidate before notifying so subscribers read the new value, not the cache.
+  cachedRaw = null;
+  window.dispatchEvent(new Event(SESSION_EVENT));
+}
+
+function subscribeSessionProfile(onChange: () => void): () => void {
+  // `storage` covers other tabs (including a sign-out elsewhere); the custom
+  // event covers this one.
+  window.addEventListener(SESSION_EVENT, onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    window.removeEventListener(SESSION_EVENT, onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
+function getServerSessionProfile(): SessionProfile {
+  return EMPTY_SESSION;
+}
+
+/**
+ * Live view of the signed-in user's name, email and photo. Re-renders whenever
+ * the profile changes — in this tab or another — so an edit shows up everywhere
+ * immediately instead of after a reload.
+ */
+export function useSessionProfile(): SessionProfile {
+  return useSyncExternalStore(
+    subscribeSessionProfile,
+    readSessionProfile,
+    getServerSessionProfile
+  );
 }
 
 /**

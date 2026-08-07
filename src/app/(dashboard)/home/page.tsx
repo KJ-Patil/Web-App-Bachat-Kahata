@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Bell, ArrowUpRight, ArrowDownRight, Wallet, Target, Activity, Calendar, Inbox, PiggyBank, User } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
-import { sanitizeAvatarUrl, sanitizeDisplayName } from "@/core/utils/avatar";
+import { useSessionProfile } from "@/core/store/userProfile";
 import SmsPasteZone from "@/components/automation/SmsPasteZone";
 import SafeToSpendCard from "@/components/dashboard/SafeToSpendCard";
 import { useTranslation } from "@/i18n/i18nContext";
@@ -31,32 +31,13 @@ import {
 
 export default function WorkspacePage() {
   const [isMounted, setIsMounted] = useState(false);
-  // The cached session is validated on read: it lives in localStorage, and the
-  // avatar goes straight into an <img src>.
-  const [userName] = useState(() => {
-    if (typeof window === "undefined") return "Guest";
-    const session = localStorage.getItem("user_session");
-    if (session) {
-      try {
-        return sanitizeDisplayName(JSON.parse(session).name) || "Guest";
-      } catch {
-        return "Guest";
-      }
-    }
-    return "Guest";
-  });
-  const [userAvatar] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    const session = localStorage.getItem("user_session");
-    if (session) {
-      try {
-        return sanitizeAvatarUrl(JSON.parse(session).avatarUrl);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  });
+  // Subscribed, not read once at mount: a name or photo changed on the Settings
+  // page (or rehydrated at login) shows up here without a reload. Reading
+  // localStorage in a useState initializer also mismatched the prerendered HTML
+  // during hydration, which this avoids.
+  const session = useSessionProfile();
+  const userName = session.name || "Guest";
+  const userAvatar = session.avatarUrl;
   const [activeCurrency, setActiveCurrency] = useState("INR");
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<string[]>([]);

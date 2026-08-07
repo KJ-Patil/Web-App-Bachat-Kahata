@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, Mail, Lock, CheckCircle2, Phone, ArrowLeft } from "lucide-react";
 import { auth } from "@/config/firebase";
-import { resolveSessionProfile } from "@/core/store/userProfile";
+import { resolveSessionProfile, writeSessionProfile } from "@/core/store/userProfile";
 import { useTranslation } from "@/i18n/i18nContext";
 import type { User } from "firebase/auth";
 import {
@@ -55,8 +55,7 @@ export default function LoginPage() {
    * cloud profile nor the provider has a name.
    */
   const finishSignIn = async (user: User, fallbackName: string) => {
-    const session = await resolveSessionProfile(user, fallbackName);
-    localStorage.setItem("user_session", JSON.stringify(session));
+    writeSessionProfile(await resolveSessionProfile(user, fallbackName));
     // Always go through the lock screen: it sets up a PIN if none exists (the
     // PIN also derives the key that decrypts local financial data) or verifies
     // the existing one.

@@ -27,7 +27,12 @@ import {
   getCurrentUid,
   BackupRecord
 } from "@/core/store/dataStore";
-import { saveUserProfile } from "@/core/store/userProfile";
+import {
+  readSessionProfile,
+  saveUserProfile,
+  useSessionProfile,
+  writeSessionProfile,
+} from "@/core/store/userProfile";
 import { sanitizeAvatarUrl, sanitizeDisplayName } from "@/core/utils/avatar";
 import { getLanguage } from "@/core/utils/languages";
 import { useTranslation } from "@/i18n/i18nContext";
@@ -41,10 +46,13 @@ export default function SettingsPage() {
   // Stages: 0 = confirm, 1 = final confirm, 2 = done, 3 = email verification
   const [clearStage, setClearStage] = useState<0 | 1 | 2 | 3>(0);
 
-  // Real user profile, loaded from the signup session
-  const [userName, setUserName] = useState("Guest");
-  const [userEmail, setUserEmail] = useState("");
-  const [userAvatar, setUserAvatar] = useState<string | null>(null);
+  // Live view of the signed-in profile. Subscribed rather than copied into local
+  // state at mount, so an edit (or the rehydrate that runs at login) is reflected
+  // straight away instead of only after a page reload.
+  const session = useSessionProfile();
+  const userName = session.name || "Guest";
+  const userEmail = session.email ?? "";
+  const userAvatar = session.avatarUrl;
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
 
@@ -175,23 +183,7 @@ export default function SettingsPage() {
 
       const lang = localStorage.getItem("active_language");
       if (lang) setActiveLanguage(lang);
-
-      // Load the real signed-in profile from the session
-      const session = localStorage.getItem("user_session");
-      if (session) {
-        try {
-          // The session is written by this device but is still parsed as
-          // untrusted input — it lives in localStorage, which anything running
-          // on the page can edit, and the avatar ends up in an <img src>.
-          const parsed = JSON.parse(session);
-          const name = sanitizeDisplayName(parsed.name);
-          if (name) setUserName(name);
-          if (typeof parsed.email === "string") setUserEmail(parsed.email);
-          setUserAvatar(sanitizeAvatarUrl(parsed.avatarUrl));
-        } catch {
-          // Ignore malformed session
-        }
-      }
+      // The profile is not loaded here — `useSessionProfile` subscribes to it.
     }
   }, []);
 
@@ -231,19 +223,13 @@ export default function SettingsPage() {
     const safeName = sanitizeDisplayName(name);
     const safeAvatar = sanitizeAvatarUrl(avatar);
 
-    setUserName(safeName);
-    setUserAvatar(safeAvatar);
-
-    try {
-      const session = localStorage.getItem("user_session");
-      const parsed = session ? JSON.parse(session) : {};
-      localStorage.setItem(
-        "user_session",
-        JSON.stringify({ ...parsed, name: safeName, avatarUrl: safeAvatar })
-      );
-    } catch {
-      // A malformed session shouldn't block the in-memory update above.
-    }
+    // Updating the session cache re-renders every subscriber, this page included
+    // — no separate copy in local state to keep in sync.
+    writeSessionProfile({
+      email: readSessionProfile().email,
+      name: safeName,
+      avatarUrl: safeAvatar,
+    });
 
     const user = auth.currentUser ?? fbUser;
     if (user) {
@@ -376,9 +362,6 @@ export default function SettingsPage() {
         <div className="flex-1 text-center sm:text-left space-y-1">
           <h2 className="text-xl font-black text-foreground">{userName}</h2>
           <p className="text-sm font-semibold text-foreground-secondary">{userEmail || t('settings.noEmailOnFile')}</p>
-          <span className="inline-block mt-2 text-[10px] font-bold text-success uppercase tracking-widest bg-success-light px-2 py-0.5 rounded-md">
-            {t('settings.localAccount')}
-          </span>
         </div>
         <div className="flex flex-col gap-3 w-full sm:w-auto">
           <button onClick={() => setIsEditProfileOpen(true)} className="btn-secondary text-xs flex items-center justify-center gap-2">
@@ -398,13 +381,19 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      <EditProfileModal
-        isOpen={isEditProfileOpen}
-        onClose={() => setIsEditProfileOpen(false)}
-        initialName={userName}
-        initialAvatar={userAvatar}
-        onSave={handleSaveProfile}
-      />
+      {/* Mounted only while open. The modal seeds its fields from these props via
+          useState, which runs once per mount — keeping it permanently mounted
+          would freeze it on the placeholder profile ("Guest", no photo) that
+          exists before the session loads, and saving would write that back. */}
+      {isEditProfileOpen && (
+        <EditProfileModal
+          isOpen={isEditProfileOpen}
+          onClose={() => setIsEditProfileOpen(false)}
+          initialName={userName}
+          initialAvatar={userAvatar}
+          onSave={handleSaveProfile}
+        />
+      )}
 
       {userAvatar && (
         <ProfilePhotoViewerModal

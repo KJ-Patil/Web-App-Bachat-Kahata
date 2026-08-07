@@ -271,6 +271,9 @@ export function clearLocalCache(): void {
 
   FINANCIAL_KEYS.forEach((key) => localStorage.removeItem(key));
   localStorage.removeItem("user_session");
+  // Wake anything subscribed to the session (see useSessionProfile) so the name
+  // and photo clear immediately rather than lingering until the next navigation.
+  window.dispatchEvent(new Event("bachat:session-profile"));
   // Forget the decrypted cache + key so nothing sensitive lingers in memory.
   lockDataStore();
 
