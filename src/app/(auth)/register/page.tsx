@@ -7,6 +7,7 @@ import { User, Mail, Lock, Camera, Check } from "lucide-react";
 import { auth, db } from "@/config/firebase";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { fileToAvatarDataUrl, sanitizeAvatarUrl, sanitizeDisplayName } from "@/core/utils/avatar";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -21,29 +22,29 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Downscale the chosen photo to a small JPEG data URL. A `blob:` URL would be
+  // useless here — it dies with the document, so it could never be saved to the
+  // account or survive the redirect into the app.
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    // Allow re-selecting the same file after an error.
+    e.target.value = "";
     if (!file) return;
 
-    // Stream profile picture blob locally
+    setError("");
     setUploading(true);
-    setUploadProgress(0);
+    setUploadProgress(40);
 
-    // Simulate progress streaming blob
-    const interval = setInterval(() => {
-      setUploadProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setUploading(false);
-          const blobUrl = URL.createObjectURL(file);
-          setAvatarBlob(blobUrl);
-          // Store blob URL to local storage for user profile session caching
-          localStorage.setItem("user_avatar_blob", blobUrl);
-          return 100;
-        }
-        return prev + 20;
-      });
-    }, 150);
+    try {
+      const dataUrl = await fileToAvatarDataUrl(file);
+      setUploadProgress(100);
+      setAvatarBlob(dataUrl);
+    } catch (err) {
+      setUploadProgress(0);
+      setError(err instanceof Error ? err.message : "Could not process that image.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -62,20 +63,26 @@ export default function RegisterPage() {
         email,
         password
       );
-      // Save the display name on the Firebase user profile
-      await updateProfile(userCredential.user, { displayName: name });
+      const safeName = sanitizeDisplayName(name);
+      const safeAvatar = sanitizeAvatarUrl(avatarBlob);
 
-      // Save the user's profile into the Firestore database (collection: "users")
+      // Save the display name on the Firebase user profile
+      await updateProfile(userCredential.user, { displayName: safeName });
+
+      // Save the user's profile into the Firestore database (collection: "users").
+      // The name and photo go here — not just into localStorage — because signing
+      // out clears local storage; this is the copy that survives to the next login.
       await setDoc(doc(db, "users", userCredential.user.uid), {
         uid: userCredential.user.uid,
-        name,
+        name: safeName,
+        avatarUrl: safeAvatar,
         email,
         createdAt: serverTimestamp(),
       });
 
       localStorage.setItem(
         "user_session",
-        JSON.stringify({ email, name, avatarUrl: avatarBlob })
+        JSON.stringify({ email, name: safeName, avatarUrl: safeAvatar })
       );
       // Automatically route to configure a secure locking PIN on first signup
       router.push("/pin-lock");

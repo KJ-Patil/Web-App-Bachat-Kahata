@@ -3,6 +3,7 @@
 import React, { useRef, useState } from "react";
 import { X, Camera, Trash2, User } from "lucide-react";
 import { toast } from "sonner";
+import { MAX_NAME_CHARS, fileToAvatarDataUrl } from "@/core/utils/avatar";
 
 interface EditProfileModalProps {
   isOpen: boolean;
@@ -11,39 +12,6 @@ interface EditProfileModalProps {
   initialAvatar: string | null;
   /** Called with the trimmed name and the avatar data URL (or null if removed). */
   onSave: (name: string, avatar: string | null) => void;
-}
-
-// Photos are stored inline as a data URL in the local session, so they must be
-// small — a full-resolution phone photo would be megabytes of base64. Downscale
-// to a square thumbnail and re-encode as JPEG before saving.
-const AVATAR_SIZE = 256;
-
-/** Read an image file, crop it to a centered square, and return a small JPEG data URL. */
-function fileToAvatarDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Could not read the image file."));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error("That file is not a valid image."));
-      img.onload = () => {
-        // Centered square crop of the original.
-        const side = Math.min(img.width, img.height);
-        const sx = (img.width - side) / 2;
-        const sy = (img.height - side) / 2;
-
-        const canvas = document.createElement("canvas");
-        canvas.width = AVATAR_SIZE;
-        canvas.height = AVATAR_SIZE;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return reject(new Error("Image processing is not supported here."));
-        ctx.drawImage(img, sx, sy, side, side, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
-        resolve(canvas.toDataURL("image/jpeg", 0.85));
-      };
-      img.src = reader.result as string;
-    };
-    reader.readAsDataURL(file);
-  });
 }
 
 export default function EditProfileModal({
@@ -65,11 +33,6 @@ export default function EditProfileModal({
     // Allow re-selecting the same file later by clearing the input value.
     e.target.value = "";
     if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please choose an image file.");
-      return;
-    }
 
     setProcessing(true);
     try {
@@ -98,7 +61,7 @@ export default function EditProfileModal({
         <div className="px-6 py-5 border-b border-border flex justify-between items-center bg-background-subtle">
           <div>
             <h3 className="text-lg font-black text-foreground">Edit Profile</h3>
-            <p className="text-xs font-semibold text-foreground-muted">Update your name and photo on this device.</p>
+            <p className="text-xs font-semibold text-foreground-muted">Update the name and photo saved to your account.</p>
           </div>
           <button
             onClick={onClose}
@@ -168,7 +131,7 @@ export default function EditProfileModal({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              maxLength={40}
+              maxLength={MAX_NAME_CHARS}
               placeholder="Your name"
               className="input-base w-full"
             />

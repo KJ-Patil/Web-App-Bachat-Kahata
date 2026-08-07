@@ -27,6 +27,8 @@ import {
   getCurrentUid,
   BackupRecord
 } from "@/core/store/dataStore";
+import { saveUserProfile } from "@/core/store/userProfile";
+import { sanitizeAvatarUrl, sanitizeDisplayName } from "@/core/utils/avatar";
 import { getLanguage } from "@/core/utils/languages";
 import { useTranslation } from "@/i18n/i18nContext";
 
@@ -178,10 +180,14 @@ export default function SettingsPage() {
       const session = localStorage.getItem("user_session");
       if (session) {
         try {
+          // The session is written by this device but is still parsed as
+          // untrusted input — it lives in localStorage, which anything running
+          // on the page can edit, and the avatar ends up in an <img src>.
           const parsed = JSON.parse(session);
-          if (parsed.name) setUserName(parsed.name);
-          if (parsed.email) setUserEmail(parsed.email);
-          if (parsed.avatarUrl) setUserAvatar(parsed.avatarUrl);
+          const name = sanitizeDisplayName(parsed.name);
+          if (name) setUserName(name);
+          if (typeof parsed.email === "string") setUserEmail(parsed.email);
+          setUserAvatar(sanitizeAvatarUrl(parsed.avatarUrl));
         } catch {
           // Ignore malformed session
         }
@@ -208,21 +214,32 @@ export default function SettingsPage() {
     window.location.href = "/pin-lock?action=change";
   };
 
-  // Persist an edited profile. Name + photo live in the local `user_session`
-  // (the photo is a small data URL — see EditProfileModal), so they survive a
-  // reload on this device. The display name is also pushed to Firebase Auth,
-  // best-effort, so it follows the account; the photo stays device-local
-  // because Firebase Auth's photoURL can't hold a full data URL.
-  const handleSaveProfile = (name: string, avatar: string | null) => {
-    setUserName(name);
-    setUserAvatar(avatar);
+  /**
+   * Write the profile to all three places it needs to live:
+   *
+   *  1. React state — instant feedback.
+   *  2. `user_session` in localStorage — the fast local cache every screen reads.
+   *  3. The user's Firestore document — the only durable copy. Signing out wipes
+   *     localStorage on purpose (shared devices), so without step 3 the name and
+   *     photo would be gone at the next login.
+   *
+   * The name is mirrored to Firebase Auth too so it follows the account into
+   * anything that reads `displayName`; the photo is not, because Auth's
+   * `photoURL` cannot hold a data URL.
+   */
+  const persistProfile = async (name: string, avatar: string | null) => {
+    const safeName = sanitizeDisplayName(name);
+    const safeAvatar = sanitizeAvatarUrl(avatar);
+
+    setUserName(safeName);
+    setUserAvatar(safeAvatar);
 
     try {
       const session = localStorage.getItem("user_session");
       const parsed = session ? JSON.parse(session) : {};
       localStorage.setItem(
         "user_session",
-        JSON.stringify({ ...parsed, name, avatarUrl: avatar })
+        JSON.stringify({ ...parsed, name: safeName, avatarUrl: safeAvatar })
       );
     } catch {
       // A malformed session shouldn't block the in-memory update above.
@@ -230,28 +247,33 @@ export default function SettingsPage() {
 
     const user = auth.currentUser ?? fbUser;
     if (user) {
-      // Fire-and-forget: a failed cloud sync must not lose the local edit.
-      void updateProfile(user, { displayName: name }).catch(() => {});
+      // Best-effort: a failed Auth sync must not lose the edit.
+      void updateProfile(user, { displayName: safeName }).catch(() => {});
     }
 
-    toast.success("Profile updated.");
+    return saveUserProfile({ name: safeName, avatarUrl: safeAvatar });
   };
 
-  // Clear just the photo, keeping the name. Persists to the local session so the
-  // default (Google) photo doesn't reappear on the next render.
-  const handleRemovePhoto = () => {
-    setUserAvatar(null);
-    try {
-      const session = localStorage.getItem("user_session");
-      const parsed = session ? JSON.parse(session) : {};
-      localStorage.setItem(
-        "user_session",
-        JSON.stringify({ ...parsed, avatarUrl: null })
-      );
-    } catch {
-      // In-memory removal above still applies.
+  const handleSaveProfile = async (name: string, avatar: string | null) => {
+    const synced = await persistProfile(name, avatar);
+    if (synced) {
+      toast.success("Profile updated.");
+    } else {
+      // Be honest: the change is live on this device but won't survive a logout
+      // until it reaches the cloud.
+      toast.warning("Profile saved on this device — could not sync to your account.");
     }
-    toast.success("Profile photo removed.");
+  };
+
+  // Clear just the photo, keeping the name. Stored as an explicit null so the
+  // provider's photo isn't re-seeded at the next login.
+  const handleRemovePhoto = async () => {
+    const synced = await persistProfile(userName, null);
+    if (synced) {
+      toast.success("Profile photo removed.");
+    } else {
+      toast.warning("Photo removed on this device — could not sync to your account.");
+    }
   };
 
   // Actually wipe the data and show the success stage

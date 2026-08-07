@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Bell, ArrowUpRight, ArrowDownRight, Wallet, Target, Activity, Calendar, Inbox, PiggyBank, User } from "lucide-react";
 import { formatAmount } from "@/core/utils/currencyManager";
+import { sanitizeAvatarUrl, sanitizeDisplayName } from "@/core/utils/avatar";
 import SmsPasteZone from "@/components/automation/SmsPasteZone";
 import SafeToSpendCard from "@/components/dashboard/SafeToSpendCard";
 import { useTranslation } from "@/i18n/i18nContext";
@@ -30,13 +31,14 @@ import {
 
 export default function WorkspacePage() {
   const [isMounted, setIsMounted] = useState(false);
+  // The cached session is validated on read: it lives in localStorage, and the
+  // avatar goes straight into an <img src>.
   const [userName] = useState(() => {
     if (typeof window === "undefined") return "Guest";
     const session = localStorage.getItem("user_session");
     if (session) {
       try {
-        const parsed = JSON.parse(session);
-        return parsed.name || "Guest";
+        return sanitizeDisplayName(JSON.parse(session).name) || "Guest";
       } catch {
         return "Guest";
       }
@@ -48,7 +50,7 @@ export default function WorkspacePage() {
     const session = localStorage.getItem("user_session");
     if (session) {
       try {
-        return JSON.parse(session).avatarUrl ?? null;
+        return sanitizeAvatarUrl(JSON.parse(session).avatarUrl);
       } catch {
         return null;
       }

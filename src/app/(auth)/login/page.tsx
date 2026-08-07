@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, Mail, Lock, CheckCircle2, Phone, ArrowLeft } from "lucide-react";
 import { auth } from "@/config/firebase";
+import { resolveSessionProfile } from "@/core/store/userProfile";
 import { useTranslation } from "@/i18n/i18nContext";
+import type { User } from "firebase/auth";
 import {
   signInWithEmailAndPassword,
   GoogleAuthProvider,
@@ -45,7 +47,15 @@ export default function LoginPage() {
   const confirmationRef = useRef<ConfirmationResult | null>(null);
   const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
 
-  const finishSignIn = (session: { email: string | null; name: string }) => {
+  /**
+   * Shared tail of every sign-in path. Signing out wipes `user_session` from
+   * this device, so the name and photo the user set in Settings have to be
+   * rehydrated from their cloud profile here — otherwise each login would reset
+   * them to the provider defaults. `fallbackName` is only used when neither the
+   * cloud profile nor the provider has a name.
+   */
+  const finishSignIn = async (user: User, fallbackName: string) => {
+    const session = await resolveSessionProfile(user, fallbackName);
     localStorage.setItem("user_session", JSON.stringify(session));
     // Always go through the lock screen: it sets up a PIN if none exists (the
     // PIN also derives the key that decrypts local financial data) or verifies
@@ -103,11 +113,7 @@ export default function LoginPage() {
 
     try {
       const result = await confirmationRef.current.confirm(otp.trim());
-      const user = result.user;
-      finishSignIn({
-        email: user.email,
-        name: user.phoneNumber || "Phone User",
-      });
+      await finishSignIn(result.user, result.user.phoneNumber || "Phone User");
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Invalid or expired code.";
@@ -146,7 +152,7 @@ export default function LoginPage() {
       );
 
       // Sign in against Firebase Authentication
-      await signInWithEmailAndPassword(auth, email, password);
+      const result = await signInWithEmailAndPassword(auth, email, password);
 
       // Remember (or forget) the email for next time.
       if (rememberMe) {
@@ -155,14 +161,9 @@ export default function LoginPage() {
         localStorage.removeItem("remembered_email");
       }
 
-      localStorage.setItem(
-        "user_session",
-        JSON.stringify({ email, name: email.split("@")[0] })
-      );
-
-      // Always route through the lock screen (PIN setup or verify) — the PIN
-      // derives the key that decrypts local financial data.
-      router.push("/pin-lock");
+      // The email local-part is only the last resort: the saved profile name,
+      // then the Firebase Auth display name, both come first.
+      await finishSignIn(result.user, email.split("@")[0]);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : t('login.loginFailed');
       setError(message);
@@ -185,22 +186,10 @@ export default function LoginPage() {
       // Open the Google sign-in popup via Firebase Authentication
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
-      const user = result.user;
 
-      localStorage.setItem(
-        "user_session",
-        JSON.stringify({
-          email: user.email,
-          name: user.displayName || "Google User",
-          // Google returns the account's profile photo here — seed it as the
-          // avatar so it shows by default (the user can still change it later).
-          avatarUrl: user.photoURL ?? null,
-        })
-      );
-
-      // Always route through the lock screen (PIN setup or verify) — the PIN
-      // derives the key that decrypts local financial data.
-      router.push("/pin-lock");
+      // Google's name and photo are only the seed for a brand-new account; a
+      // profile the user has since edited (including a removed photo) wins.
+      await finishSignIn(result.user, "Google User");
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : t('login.googleFailed');
