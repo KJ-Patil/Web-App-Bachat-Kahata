@@ -12,6 +12,8 @@
     "search": "Search",
     "loading": "Loading...",
     "signOut": "Sign Out",
+    "switchToDark": "Switch to dark mode",
+    "switchToLight": "Switch to light mode",
     "signIn": "Sign In",
     "currency": "Currency",
     "amount": "Amount",

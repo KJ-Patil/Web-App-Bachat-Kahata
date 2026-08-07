@@ -226,7 +226,7 @@ function SliderControl({
         />
         {/* Custom Thumb */}
         <div 
-          className="absolute top-1/2 -mt-2.5 w-5 h-5 bg-white border-2 border-border rounded-full shadow-sm pointer-events-none group-hover:scale-110 transition-transform"
+          className="absolute top-1/2 -mt-2.5 w-5 h-5 bg-card border-2 border-border rounded-full shadow-sm pointer-events-none group-hover:scale-110 transition-transform"
           style={{ left: `calc(${percentage}% - 10px)` }}
         />
       </div>

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { Bell, ArrowUpRight, ArrowDownRight, Wallet, Target, Activity, Calendar, Inbox, PiggyBank, User } from "lucide-react";
+import { ThemeToggle } from "@/components/dashboard/ThemeToggle";
 import { formatAmount } from "@/core/utils/currencyManager";
 import { useSessionProfile } from "@/core/store/userProfile";
 import SmsPasteZone from "@/components/automation/SmsPasteZone";
@@ -166,47 +167,52 @@ export default function WorkspacePage() {
           </div>
         </div>
 
-        {/* Notifications Bell */}
-        <div className="relative">
-          <button
-            onClick={() => setShowNotifications(!showNotifications)}
-            className="p-3 rounded-xl border border-border bg-background hover:bg-secondary text-icon-default hover:text-icon-active transition-all cursor-pointer"
-            aria-label="Notifications"
-          >
-            <Bell className="w-5 h-5" />
-            {notifications.length > 0 && (
-              <>
-                <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-error animate-ping"></span>
-                <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-error"></span>
-              </>
-            )}
-          </button>
+        <div className="flex items-center gap-2">
+          {/* Light / Dark theme switch */}
+          <ThemeToggle />
 
-          {showNotifications && (
-            <div className="absolute right-0 mt-3 w-80 bg-card border border-border rounded-xl shadow-lg z-40 p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-150">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">{t('home.alertCenter')}</span>
-                <button 
-                  onClick={() => {
-                    setNotifications([]);
-                    localStorage.setItem("notifications", "[]");
-                  }} 
-                  className="text-[10px] text-primary hover:underline"
-                >
-                  {t('home.clearAll')}
-                </button>
+          {/* Notifications Bell */}
+          <div className="relative">
+            <button
+              onClick={() => setShowNotifications(!showNotifications)}
+              className="p-3 rounded-xl border border-border bg-background hover:bg-secondary text-icon-default hover:text-icon-active transition-all cursor-pointer"
+              aria-label="Notifications"
+            >
+              <Bell className="w-5 h-5" />
+              {notifications.length > 0 && (
+                <>
+                  <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-error animate-ping"></span>
+                  <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-error"></span>
+                </>
+              )}
+            </button>
+
+            {showNotifications && (
+              <div className="absolute right-0 mt-3 w-80 bg-card border border-border rounded-xl shadow-lg z-40 p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">{t('home.alertCenter')}</span>
+                  <button 
+                    onClick={() => {
+                      setNotifications([]);
+                      localStorage.setItem("notifications", "[]");
+                    }} 
+                    className="text-[10px] text-primary hover:underline"
+                  >
+                    {t('home.clearAll')}
+                  </button>
+                </div>
+                <div className="space-y-2 divide-y divide-border">
+                  {notifications.length === 0 ? (
+                    <p className="text-xs text-foreground-muted pt-2">{t('home.noAlerts')}</p>
+                  ) : (
+                    notifications.map((note, i) => (
+                      <p key={i} className="text-xs text-foreground-secondary pt-2 first:pt-0">{note}</p>
+                    ))
+                  )}
+                </div>
               </div>
-              <div className="space-y-2 divide-y divide-border">
-                {notifications.length === 0 ? (
-                  <p className="text-xs text-foreground-muted pt-2">{t('home.noAlerts')}</p>
-                ) : (
-                  notifications.map((note, i) => (
-                    <p key={i} className="text-xs text-foreground-secondary pt-2 first:pt-0">{note}</p>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </header>
 
@@ -229,7 +235,7 @@ export default function WorkspacePage() {
         </div>
 
         <div className="flex gap-4">
-          <div className="bg-white/60 backdrop-blur-sm px-4 py-3 rounded-xl flex items-center gap-3">
+          <div className="bg-card/60 backdrop-blur-sm px-4 py-3 rounded-xl flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-success/10 text-success flex items-center justify-center">
               <ArrowUpRight className="w-4 h-4" />
             </div>
@@ -239,7 +245,7 @@ export default function WorkspacePage() {
             </div>
           </div>
 
-          <div className="bg-white/60 backdrop-blur-sm px-4 py-3 rounded-xl flex items-center gap-3">
+          <div className="bg-card/60 backdrop-blur-sm px-4 py-3 rounded-xl flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-error/10 text-error flex items-center justify-center">
               <ArrowDownRight className="w-4 h-4" />
             </div>
