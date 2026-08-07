@@ -285,11 +285,11 @@
   color-scheme: dark;
 
   /* Base Backgrounds */
-  --background: #0b1120;
-  --background-subtle: #111c30;
-  --card: #151f33;
+  --background: #05080f;
+  --background-subtle: #0a0e18;
+  --card: #0d121d;
   --card-foreground: #e2e8f0;
-  --popover: #151f33;
+  --popover: #0d121d;
   --popover-foreground: #e2e8f0;
 
   /* Text Hierarchy */
@@ -301,29 +301,29 @@
   --primary: #3b82f6;
   --primary-foreground: #ffffff;
   --primary-hover: #60a5fa;
-  --primary-light: #1e3a8a;
-  --primary-lighter: #172554;
+  --primary-light: #16295c;
+  --primary-lighter: #0d1730;
 
   /* Secondary Neutral */
-  --secondary: #1e293b;
+  --secondary: #141b28;
   --secondary-foreground: #cbd5e1;
 
   /* Muted */
-  --muted: #1e293b;
+  --muted: #141b28;
   --muted-foreground: #94a3b8;
 
   /* Accent Highlight */
-  --accent: #172554;
+  --accent: #0d1730;
   --accent-foreground: #7dd3fc;
 
   /* System Borders & Inputs */
   --destructive: #f87171;
   --destructive-foreground: #2c1416;
-  --destructive-light: #2e1414;
-  --border: #24304a;
-  --border-strong: #334155;
-  --input: #24304a;
-  --input-border: #475569;
+  --destructive-light: #250f10;
+  --border: #1c2434;
+  --border-strong: #2b3548;
+  --input: #1c2434;
+  --input-border: #3d4a60;
   --input-focus: #3b82f6;
   --ring: #3b82f6;
 
@@ -344,25 +344,25 @@
   /* Semantic Status */
   --success: #34d399;
   --success-foreground: #052e1f;
-  --success-light: #06281d;
+  --success-light: #042018;
   --warning: #fbbf24;
   --warning-foreground: #2c1f06;
-  --warning-light: #2e2205;
+  --warning-light: #241a04;
   --error: #f87171;
   --error-foreground: #2c1416;
-  --error-light: #2e1414;
+  --error-light: #250f10;
   --info: #38bdf8;
   --info-foreground: #082f3f;
-  --info-light: #07293a;
+  --info-light: #05202e;
 
   /* Brand Vibrant Accent */
   --brand: #fb923c;
   --brand-foreground: #2a1808;
   --brand-hover: #fdba74;
-  --brand-light: #2a1808;
+  --brand-light: #221306;
 
   /* Navigation / Tabs */
-  --tab-hover-bg: #1e293b;
+  --tab-hover-bg: #141b28;
 
   /* Chart Visualizations */
   --chart-1: #60a5fa;
@@ -373,32 +373,32 @@
   --chart-6: #22d3ee;
 
   /* Sidebar context */
-  --sidebar: #0d1526;
+  --sidebar: #070b13;
   --sidebar-foreground: #e2e8f0;
   --sidebar-primary: #60a5fa;
-  --sidebar-primary-foreground: #0b1120;
-  --sidebar-accent: #172554;
+  --sidebar-primary-foreground: #05080f;
+  --sidebar-accent: #0d1730;
   --sidebar-accent-foreground: #e2e8f0;
-  --sidebar-border: #24304a;
+  --sidebar-border: #1c2434;
   --sidebar-ring: #3b82f6;
 
   /* Disciplines */
   --discipline-civil: #60a5fa;
-  --discipline-civil-light: #172554;
+  --discipline-civil-light: #0d1730;
   --discipline-mechanical: #fb923c;
-  --discipline-mechanical-light: #2a1808;
+  --discipline-mechanical-light: #221306;
   --discipline-electrical: #facc15;
-  --discipline-electrical-light: #2c2408;
+  --discipline-electrical-light: #231c05;
   --discipline-instrumentation: #a78bfa;
-  --discipline-instrumentation-light: #221a3d;
+  --discipline-instrumentation-light: #1a1430;
   --discipline-process: #2dd4bf;
-  --discipline-process-light: #04292a;
+  --discipline-process-light: #032021;
   --discipline-piping: #fb7185;
-  --discipline-piping-light: #2e1220;
+  --discipline-piping-light: #250e19;
   --discipline-it: #818cf8;
-  --discipline-it-light: #1c1f47;
+  --discipline-it-light: #141637;
   --discipline-technology: #34d399;
-  --discipline-technology-light: #06281d;
+  --discipline-technology-light: #042018;
 }
 
 @layer base {

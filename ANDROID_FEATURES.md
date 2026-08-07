@@ -39,9 +39,14 @@ Areas the earlier revision of this doc didn't cover:
 | **Profile editing** — photo crop/downscale, name sync, re-auth for wipes | §6.6, §6.7 |
 | **Transaction discounts**, income source groups, "Other" category expander | §3, §9 |
 | **Shared Family-Wallet collection + Firestore security rules** | §4.1 |
+| **Dark theme** — full token mirror, no-flash boot, follow-OS-until-chosen, header toggle | §11.1, §9 |
+| **Cloud-backed profile** — `users/{uid}` name + avatar, survives sign-out, subscribed store | §4.2, §6.6 |
+| **Avatar & name sanitization** — URL scheme allowlist, size cap, control/bidi stripping | §5.24 |
+| **Offline cache must stay off-disk** — Firestore in-memory cache, worker never caches cloud data | §4.3 |
 
-Two things were **removed** on the web and must not be ported: the simulated Twilio SMS
-channel (§5.20) and the hardcoded support phone number (§8, Help).
+Three things were **removed** on the web and must not be ported: the simulated Twilio SMS
+channel (§5.20), the hardcoded support phone number (§8, Help), and the register screen's
+fake avatar upload — now genuinely implemented (§6.3).
 
 ---
 
@@ -71,6 +76,10 @@ channel (§5.20) and the hardcoded support phone number (§8, Help).
 | `fetch` open.er-api.com | **Retrofit / OkHttp** + DataStore cache | Live FX rates (12 h TTL) |
 | framer-motion draggable FAB | **Compose `Modifier.draggable` / `detectDragGestures`** | Floating calculator bubble |
 | Tailwind theme tokens | **Material 3 `ColorScheme` + theme.kt** | Design tokens |
+| `.dark` class + `ThemeProvider` | **`darkColorScheme()` + a `themeMode` `Flow` from DataStore** | Light / dark / follow-system |
+| `matchMedia("prefers-color-scheme")` | **`isSystemInDarkTheme()`** | Follow the OS until the user chooses |
+| `useSyncExternalStore` on `user_session` | **`Flow<SessionProfile>` from DataStore** | Live profile — no screen holds a stale copy |
+| Firestore `memoryLocalCache()` | **`FirebaseFirestoreSettings.setLocalCacheSettings(MemoryCacheSettings)`** | Keep plaintext cloud data off disk (§4.3) |
 
 **Suggested Gradle dependencies (Kotlin DSL):**
 ```kotlin
@@ -120,7 +129,8 @@ app/
 │  │   ├─ dao/          # TransactionDao, LedgerDao, ...
 │  │   └─ AppDatabase.kt
 │  ├─ remote/           # FirestoreSync.kt (mirror per-user docs)
-│  └─ repository/       # DataRepository.kt  (== dataStore.ts)
+│  └─ repository/       # DataRepository.kt        (== dataStore.ts)
+│                       # UserProfileRepository.kt (== userProfile.ts — NOT encrypted, §4.2)
 ├─ domain/              # PURE Kotlin logic (ports of core/)
 │  ├─ math/             # HealthEngine.kt, DebtSimplifier.kt, EmiCalculator.kt,
 │  │                    # MathEvaluator.kt
@@ -132,9 +142,11 @@ app/
 │  └─ util/             # CurrencyManager.kt, CsvExporter.kt, PdfGenerator.kt,
 │                       # ExcelExporter.kt, Countries.kt, AnomalyRadar.kt,
 │                       # BucketConfig.kt, Categories.kt, CalendarUtil.kt,
-│                       # DueDates.kt, ReminderService.kt, Languages.kt
+│                       # DueDates.kt, ReminderService.kt, Languages.kt,
+│                       # AvatarUtils.kt
 ├─ ui/
 │  ├─ theme/            # Color.kt, Theme.kt, Type.kt  (== globals.css tokens)
+│  │                    # ThemeController.kt — light/dark/system mode (§11.1)
 │  ├─ auth/             # LoginScreen, RegisterScreen, PinLockScreen
 │  ├─ dashboard/        # HomeScreen + all feature screens
 │  ├─ components/       # reusable composables & "modals" (bottom sheets)
@@ -268,8 +280,10 @@ Synced (cloud-mirrored), one Firestore doc each:
 > the Budgeting Rule computes from. Left local-only they silently reset on a restore or a new
 > device and the split reports different numbers with no error shown.
 
-Local-only (DataStore prefs, never synced): auth/session, PIN hash, biometric flag,
-active currency, active language, notifications, mood logs, academy progress, FX-rate cache.
+Local-only (DataStore prefs, never synced): auth/session cache, PIN hash, biometric flag,
+active currency, active language, **theme mode**, notifications, mood logs, academy progress,
+FX-rate cache. The **profile** (name + avatar) is cloud-backed but lives outside this store
+entirely — see §4.2.
 
 ### 4.1 The one shared collection — Family Wallet (`familyGroups/{code}`)
 Everything else in the app is a **per-user mirror** at `users/{uid}/appData/{key}`. Family
@@ -313,6 +327,70 @@ looked up (otherwise joining is impossible) but the collection can never be walk
 on **`memberUids`** (real Firebase UIDs), never on `memberNames` — display names are neither
 unique nor trustworthy. A native client hits exactly the same rules, so nothing here is
 web-specific.
+
+### 4.2 User profile — `UserProfileRepository.kt` (== `core/store/userProfile.ts`)
+The display name and avatar are the one piece of user data that deliberately **does not go
+through the encrypted store**, for two reasons: the profile has to be resolved *before* the
+lock screen in order to greet the user, and it must survive sign-out, which wipes every local
+key on purpose (§4, `clearLocalCache`). It therefore lives in the user's own Firestore
+document — the same `users/{uid}` doc registration creates, covered by the owner-only rule in
+§4.1 — with the local copy as a **cache only**.
+
+```kotlin
+data class UserProfile(val name: String, val avatarUrl: String?)   // null = explicitly removed
+data class SessionProfile(val name: String, val avatarUrl: String?, val email: String?)
+
+suspend fun saveUserProfile(profile: UserProfile): Boolean   // merge write; false = not synced
+suspend fun fetchUserProfile(): UserProfile?                 // null when signed out / offline
+suspend fun resolveSessionProfile(user: FirebaseUser, fallbackName: String): SessionProfile
+fun sessionProfile(): Flow<SessionProfile>                   // live; every screen collects this
+suspend fun writeSessionProfile(session: SessionProfile)
+```
+
+- **`merge = true`** on the write, so it never clobbers the `uid` / `email` / `createdAt`
+  fields registration put on the same document. Store `profileUpdatedAt` alongside.
+- **Take the uid from `auth.currentUser`, never from a caller, a nav arg or storage.** The
+  security rules would reject a mis-aimed read anyway; this is the second lock.
+- **Precedence in `resolveSessionProfile`:** saved profile → identity provider
+  (`displayName` / `photoUrl`) → `fallbackName` (e.g. the email local-part) → `"Guest"`.
+  It **always resolves** — a failed profile read must never block login.
+- **The avatar is three-state, and the distinction is load-bearing:** *absent* means never
+  set, so fall back to the provider photo; **`null` means the user removed it** and must stay
+  null, or Google's photo silently reappears at the next sign-in; a string is the saved photo.
+  Persist the null explicitly — don't omit the field.
+- **Report sync failure honestly.** `saveUserProfile` returns false when the cloud write
+  fails; the UI then says *"saved on this device — could not sync to your account"* rather
+  than a plain success toast, because the edit will not survive a sign-out until it lands.
+  A failed cloud write never discards the local edit.
+- Re-validate on the way **in** as well as out (§5.24): the document is user-writable, so it
+  is untrusted input even though this app wrote it.
+
+**Subscribe, don't snapshot** — the same rule as §4. The web replaced its read-once-at-mount
+pattern with `useSyncExternalStore` because an edit on Settings stayed invisible on Home until
+a full reload. On Android this is free: expose a `Flow<SessionProfile>` from DataStore and
+collect it with `collectAsStateWithLifecycle()` in every screen that shows the name or photo
+(Home header, Settings profile card). Hold no separate copy in local state. Sign-out must
+emit on that flow too, so the name and photo clear immediately.
+
+### 4.3 Offline cache must stay off disk
+The web pins Firestore to an **in-memory cache** (`memoryLocalCache()`) and the service worker
+refuses to store any cross-origin response. Both are the same deliberate decision: the app's
+own offline cache is encrypted at rest (§4), and a second, *plaintext* copy of the same
+financial data sitting in browser storage would defeat that entirely.
+
+**This is the one place the Android defaults work against you.** Firestore's Android SDK
+enables persistent disk caching by default, which is exactly the plaintext second copy the web
+build removed:
+
+```kotlin
+firestore.firestoreSettings = firestoreSettings {
+    setLocalCacheSettings(memoryCacheSettings {})   // no plaintext mirror on disk
+}
+```
+Room stays the offline store — encrypt it (SQLCipher, or encrypt sensitive column values with
+the §4 key) so the on-device copy matches the web's guarantee. If you deliberately choose to
+keep Firestore's disk cache for offline resilience, that is a **conscious weakening** of the
+threat model and belongs in the app's privacy copy — not an implementation detail.
 
 ### Encryption at rest — `Encryption.kt` (== `core/store/encryption.ts`)
 Every **sensitive** key is stored on-device as ciphertext, never plaintext.
@@ -749,6 +827,46 @@ back to English and then to the raw key, with `{var}` interpolation. On Android 
 languages with `AppCompatDelegate.setApplicationLocales(...)` (per-app language, API 33+, with
 the AppCompat backport below that) instead of the web's persist-and-reload.
 
+### 5.24 `AvatarUtils.kt` — profile photo & display-name validation
+The avatar is stored **inline** (a small data URL on the web; a 256px JPEG on Android) rather
+than in a Storage bucket, so every value that reaches persistence or an `<img>`/`AsyncImage`
+passes through these validators. Port them — they are security code, not formatting helpers.
+
+```kotlin
+const val AVATAR_SIZE = 256              // square thumbnail edge, px
+const val MAX_AVATAR_CHARS = 300_000     // data-URL cap; Firestore docs are limited to 1 MiB
+const val MAX_NAME_CHARS = 40
+private const val MAX_SOURCE_FILE_BYTES = 8 * 1024 * 1024   // largest image we will decode
+
+fun isSafeAvatarUrl(value: Any?): Boolean
+fun sanitizeAvatarUrl(value: Any?): String?      // → null when unsafe
+fun sanitizeDisplayName(value: Any?): String
+suspend fun uriToAvatarJpeg(context: Context, uri: Uri): Result<ByteArray>
+```
+
+**Two failure modes drive the rules.**
+- **Size.** The value is stored inline in the user's Firestore profile document, which has a
+  hard **1 MiB** limit. Oversized input makes the write fail and silently loses the edit — so
+  cap it *before* saving, and reject a source image too large to decode safely (8 MB).
+- **Shape.** Only an **image data URL** (`jpeg` / `png` / `webp`, base64) or an **`https:` URL**
+  (what an identity provider returns) is ever legitimate. Everything else — `javascript:`,
+  `data:text/html`, `blob:`, plain `http:` — is rejected on **both write and read**, so a
+  tampered profile document can never put an attacker-chosen URL in front of an image loader.
+  **Parse the URL, don't string-match it**: `"https:evil"` passes a `startsWith` check and
+  fails a real parse. On Android, validate with `Uri.parse(value).scheme == "https"` and
+  reject anything Coil/Glide would resolve to a local file or content provider.
+
+**Display names** are stripped of characters that must never survive into rendered text —
+C0/C1 controls, `DEL`, zero-width marks (`U+200B–200F`), and the bidirectional overrides
+(`U+202A–202E`, `U+2066–2069`) that let one name be rendered to look like another. Tab /
+newline / CR become a space so `"First\nLast"` collapses to `"First Last"` rather than
+`"FirstLast"`; then whitespace is collapsed, trimmed, and capped at 40 chars.
+
+**Photo processing** is a centered square crop → `AVATAR_SIZE` → JPEG q=0.85, with the result
+re-checked against the size cap. Non-image input is rejected up front with a message the user
+can act on ("Please choose an image file", "pick one under 8 MB"), and picking the *same* file
+again after an error must work — clear the picker's selection state on failure.
+
 ---
 
 ## 6. Auth & Security Flow
@@ -763,20 +881,40 @@ session + PIN set → PinLock; else → Home.
 | `signInWithEmailAndPassword` | `auth.signInWithEmailAndPassword(email, pass)` |
 | Google popup | **Credential Manager / Google Sign-In** → `GoogleAuthProvider.getCredential(idToken)` → `auth.signInWithCredential(...)` |
 | Phone OTP | `PhoneAuthProvider.verifyPhoneNumber(...)` + `PhoneAuthProvider.getCredential(verificationId, code)`; E.164 validation `^\+[1-9]\d{6,14}$` |
-On success: persist session in DataStore, route to PinLock if a PIN hash exists else Home.
+**Every sign-in path ends in the same tail** — factor it out as
+`suspend fun finishSignIn(user: FirebaseUser, fallbackName: String)`, which calls
+`resolveSessionProfile` (§4.2), caches the result, and *then* routes to PinLock. This is not
+tidiness: sign-out wipes the local session on purpose, so the name and photo the user set in
+Settings have to be **rehydrated from the cloud profile at every login** or each one resets
+them to the provider defaults. `fallbackName` differs per path — the email local-part,
+`user.phoneNumber ?: "Phone User"`, `"Google User"` — and is only reached when neither the
+saved profile nor the provider has a name.
+
+On success: cache the resolved session in DataStore, then **always route through PinLock** —
+it sets up a PIN if none exists (the PIN derives the decryption key) or verifies the existing
+one. Google's name and photo are only the seed for a brand-new account; a profile the user has
+since edited — including a *removed* photo — wins.
 
 ### 6.3 Register
 `auth.createUserWithEmailAndPassword` → `user.updateProfile { displayName }` →
-Firestore `users/{uid}` doc `{uid, name, email, createdAt = FieldValue.serverTimestamp()}`.
-Store session, route to PinLock.
+Firestore `users/{uid}` doc
+`{uid, name, avatarUrl, email, createdAt = FieldValue.serverTimestamp()}`.
+Cache the session, route to PinLock.
 
-> **Known defect on the web — fix it, don't port it.** The register screen's avatar
-> "upload" is a **fake progress bar** (a 150 ms interval ticking to 100%) that ends by
-> stashing an `URL.createObjectURL` blob URL in `localStorage`. Nothing is uploaded
-> anywhere, and the blob URL is dead after a reload. On Android do the real thing:
-> either copy the picked image to internal storage and persist that `Uri`, or upload to
-> **Firebase Storage** (`storage.reference.child("avatars/$uid").putFile(uri)`) with a real
-> `OnProgressListener`. Reuse the 256px crop/downscale from §6.6 either way.
+The name and photo go into that document — **not only into local storage** — because signing
+out clears the local copy; the Firestore doc is what survives to the next login (§4.2). Run
+both through `sanitizeDisplayName` / `sanitizeAvatarUrl` (§5.24) before either write.
+
+> **Previously a known defect, now fixed on the web — port the fixed version.** The register
+> screen's avatar upload used to be a **fake progress bar** (a 150 ms interval ticking to
+> 100%) that stashed a dead `URL.createObjectURL` blob URL. It now really processes the file:
+> `fileToAvatarDataUrl` → 256px JPEG → saved to the profile document. On Android, decode the
+> picked `Uri` off the main thread (`uriToAvatarJpeg`, §5.24), show progress tied to the real
+> work, and surface decode failures as an actionable message. If you would rather have the
+> photo follow the account as a file, **Firebase Storage**
+> (`storage.reference.child("avatars/$uid").putFile(uri)` with an `OnProgressListener`) is the
+> alternative — but store the resulting **https** download URL, which `sanitizeAvatarUrl`
+> already accepts.
 
 ### 6.4 PIN Lock + Biometric
 - 4-digit keypad composable. Hash with `MessageDigest.getInstance("SHA-256")`; store hex in
@@ -787,21 +925,30 @@ Store session, route to PinLock.
   backgrounded >60s and a PIN is set, route to PinLock on return (== web Page Visibility API).
 
 ### 6.5 Session keys (DataStore, not synced)
-`user_session` (holds `name`, `email`, `avatarUrl`), `pin_hash`, `biometrics_enabled`,
-`active_currency`, `active_language`, `enc_salt` (KDF salt), `fx_rates`,
-`legacy_seed_cleared_v1`. The session PIN cache is **memory-only** — never write it to disk.
+`user_session` (a **cache** of `name`, `email`, `avatarUrl` — the durable copy is the Firestore
+profile, §4.2), `pin_hash`, `biometrics_enabled`, `active_currency`, `active_language`,
+`theme`, `enc_salt` (KDF salt), `fx_rates`, `legacy_seed_cleared_v1`. The session PIN cache is
+**memory-only** — never write it to disk.
 
 ### 6.6 Profile (name + photo)
-- Google sign-in seeds `avatarUrl` from the account's `photoURL`; the user can replace or
-  remove it. On the web these remote photos need `referrerPolicy="no-referrer"` to load —
-  on Android, Coil/Glide have no such restriction.
-- **Edit Profile** updates the local session and pushes `displayName` to Firebase Auth
-  best-effort (`user.updateProfile`), so a failed cloud sync never loses the local edit.
-- The photo stays **device-local**: it's held inline as a data URL because Firebase Auth's
-  `photoURL` can't carry one. On Android, save the cropped file to internal storage and keep
-  the `Uri` in DataStore (or upload to Firebase Storage if you want it to follow the account).
+- Google sign-in seeds the avatar from the account's `photoUrl` **only when the user has never
+  saved one**. Once they save — or explicitly remove — a photo, that wins at every subsequent
+  login (§4.2's three-state rule). On the web these remote photos need
+  `referrerPolicy="no-referrer"` to load; on Android, Coil/Glide have no such restriction.
+- **Edit Profile** writes to three places, in this order: the session cache (which re-renders
+  every subscriber — Home header and Settings card update instantly, with no second copy in
+  screen state), the **Firestore profile document** (the only durable copy), and Firebase
+  Auth's `displayName` (best-effort, so the name follows the account into anything reading
+  `displayName`). A failed cloud write never loses the local edit — but say so: *"saved on
+  this device — could not sync to your account"*.
+- The photo is **not** mirrored to Firebase Auth: `photoURL` cannot hold a data URL. It goes
+  in the profile document as an inline value (Android: the cropped 256px JPEG, or a Storage
+  https URL — §6.3).
+- **Removing the photo** persists an explicit `null`, not an omitted field, so the provider's
+  photo is not re-seeded at the next sign-in.
 - Images are **downscaled before saving** — centered square crop to **256×256**, re-encoded
-  JPEG q=0.85. A full-resolution phone photo would otherwise be megabytes.
+  JPEG q=0.85, then size-checked (§5.24). A full-resolution phone photo would otherwise be
+  megabytes and the profile write would fail.
 
 ### 6.7 Re-authentication for destructive actions
 Clear-All-Data requires a **real** Firebase re-auth, not an on-screen code:
@@ -838,7 +985,7 @@ Use typed nav args for `{id}` / `{groupId}` / `{date}` (`yyyy-MM-dd`).
 
 | Screen | Android composable | Key behavior |
 |---|---|---|
-| **Home / Workspace** | `HomeScreen` | Hourly greeting + name, notifications bell, `SmsPasteZone`, balance card (`getTotals().balance`), `SafeToSpendCard`, 4-stat grid (Remaining Budget %, Goal Progress %, Health Index, Ledger count), 7-day balance line + monthly category bar with Both/Income/Spent toggle. |
+| **Home / Workspace** | `HomeScreen` | Hourly greeting + name (collected from the profile flow, §4.2 — not read once at mount), header actions **theme toggle + notifications bell**, `SmsPasteZone`, balance card (`getTotals().balance`), `SafeToSpendCard`, 4-stat grid (Remaining Budget %, Goal Progress %, Health Index, Ledger count), 7-day balance line + monthly category bar with Both/Income/Spent toggle. |
 | **Transactions** | `TransactionsScreen` | Live list (`Flow`), search, type tabs (all/income/expense), KPI totals for the *currently filtered* rows, grouped Today/Yesterday/Previous Weeks, inline edit + delete-confirm, add via bottom sheet. Editing an amount inline **clears `originalAmount`/`discountAmount`** — the stored discount breakdown no longer describes the new number. |
 | **Analytics** | `AnalyticsScreen` | KPI cards with MoM % badges, income-vs-expense area chart (6 mo), category pie + legend, grouped bar (this vs last), top-5 category bars. |
 | **Comparison** | `ComparisonScreen` | Month-vs-month per-category deltas, grouped bar (top 8); expense decrease=green, increase=red. |
@@ -862,7 +1009,7 @@ Use typed nav args for `{id}` / `{groupId}` / `{date}` (`yyyy-MM-dd`).
 | **Notifications** | `NotificationsScreen` | Notification feed with severity icons, mark-all-read, delete per item. Consider mirroring to **system notifications** via `NotificationManager`. |
 | **Export** | `ExportScreen` | Date-range presets + custom, data-type multiselect with live counts, **three output formats: Excel (.xlsx) / CSV / PDF**. |
 | **Help & Support** | `HelpScreen` | Searchable FAQ accordion. WhatsApp + call cards render **only when a support number is configured** (build config, not hardcoded) — no placeholder number ever ships as a live link. |
-| **Settings** | `SettingsScreen` | Profile card (tap photo → viewer, Edit Profile / Remove Photo), currency + language pickers, category manager, **SMS gateway**, About, biometric toggle, reset PIN, **Backup & Recovery**, sign-out-everywhere, multi-stage Clear-All-Data with real re-auth (Danger Zone). |
+| **Settings** | `SettingsScreen` | Profile card (tap photo → viewer, Edit Profile / Remove Photo) bound to the profile flow, with the sync-failure warning of §6.6 — and **no "Local Account" badge**, since the profile is now cloud-backed; currency + language pickers, category manager, **SMS gateway**, About, biometric toggle, reset PIN, **Backup & Recovery**, sign-out-everywhere, multi-stage Clear-All-Data with real re-auth (Danger Zone). |
 | **Category Manager** | `CategoriesScreen` | Active vs archived categories, archive/restore, AddCategory sheet, and a **3-way bucket selector on every expense category** (Needs/Wants/Investments) that drives the Budgeting Rule. Rows show the *resolved* fallback until the user picks explicitly. |
 | **SMS Gateway** | `SmsGatewayScreen` | Fast2SMS key (masked, reveal toggle), enable switch, Quick-route caveats, published recharge tiers with a date stamp + link out to Fast2SMS, and an honest "not sending yet" banner. Draft-and-Save, not live-write (§4). |
 | **About** | `AboutScreen` | App version, credits, policy links. |
@@ -898,7 +1045,8 @@ Web modals → **Compose `ModalBottomSheet`** (Material 3) or full-screen dialog
 | `VoiceLoggingModal` | `VoiceLoggingSheet` | `SpeechRecognizer` (9 langs, default hi-IN) → `parseVoiceInput` → `checkAnomaly` → confirm → `addTransaction`. |
 | `AddSubscriptionModal` | `AddSubscriptionSheet` | Name, category preset, monthly amount → `addManualSubscription`. |
 | `FlashReminderModal` | `FlashReminderSheet` | Reminder composer: tone × language × relation template (`generateReminderMessage`), editable draft, **two channels — WhatsApp / device SMS** (`Intent`). Shared by **Ledger**, **Ledger Detail** and **Bill Splitter**. |
-| `EditProfileModal` | `EditProfileSheet` | Photo pick → square-crop to 256px JPEG → preview, Remove, display-name field (≤40 chars). |
+| `EditProfileModal` | `EditProfileSheet` | Photo pick → validate + square-crop to 256px JPEG (§5.24) → preview, Remove, display-name field (≤40 chars). Copy says *"saved to your account"*, not "on this device" — it is cloud-backed now. |
+| `ThemeToggle` | `ThemeToggle` | Icon button in the Home header, styled to match the notification bell beside it. Sun and moon are **both** rendered and cross-faded by rotation/scale (`animateFloatAsState`) rather than swapped, so there's no pop. Content description flips with the theme ("Switch to dark/light mode") and is translated. |
 | `ProfilePhotoViewerModal` | `ProfilePhotoViewerDialog` | Full-bleed photo view with a delete action. |
 | `GlobalFloatingCalculator` | `FloatingCalculator` | Draggable FAB bubble (constrained to the viewport) opening a keypad popover with a **live result** via `evaluateArithmetic`, plus copy-to-clipboard. Mounted **inside the authenticated shell only** — not over the login/register screens. |
 | `PhoneNumberInput` | `PhoneNumberField` | Country selector (flag+dial) + national field enforcing per-country digit limits via `Countries.kt`. |
@@ -916,12 +1064,13 @@ Web modals → **Compose `ModalBottomSheet`** (Material 3) or full-screen dialog
 | Weekly insights | `WorkManager` `PeriodicWorkRequest` → `runLazyCatchUpSync` |
 | CSV / PDF / Excel files | `MediaStore` / Storage Access Framework; `PdfDocument`; Apache POI `XSSFWorkbook` |
 | System notifications | `NotificationManager` + notification channels |
-| Offline cache | Room + Firestore offline persistence (`FirebaseFirestore` caches by default on Android) |
+| Offline cache | Room only. **Turn Firestore's disk cache off** (`MemoryCacheSettings`) — it is on by default and would keep a plaintext copy of the financial data (§4.3) |
 | Encryption at rest | `javax.crypto` PBKDF2 + AES-GCM (or Jetpack Security); key in memory only |
 | Connectivity-aware retry | `ConnectivityManager.NetworkCallback.onAvailable` → `flushPendingWrites()` |
 | Live FX rates | Retrofit/OkHttp → `open.er-api.com`, cached in DataStore with a 12 h TTL |
 | Profile photo | Photo Picker (`ACTION_PICK_IMAGES`) → centered square crop → 256px JPEG → internal storage |
-| Theming / dark mode | Material 3 `dynamicColorScheme` (Android 12+) or fixed `ColorScheme` from theme tokens |
+| Theming / dark mode | Fixed light + dark `ColorScheme` from the theme tokens (§11.1); mode persisted in DataStore, `isSystemInDarkTheme()` until chosen |
+| Profile photo storage | Cropped JPEG in internal storage (or Firebase Storage), path/URL in the `users/{uid}` profile doc (§4.2) |
 | App language | `AppCompatDelegate.setApplicationLocales` + `values-hi` / `values-mr` |
 | Currency/number format | `java.text.NumberFormat` with `Locale("en","IN")` |
 | Dates | `java.time.LocalDate` / `DateTimeFormatter` (keep ISO strings for parity) |
@@ -958,20 +1107,61 @@ Map Tailwind semantic tokens to a Material 3 `ColorScheme` + custom extension co
 - **Empty states:** an inbox icon + helper text whenever there's no real data.
 - **Icons:** Material Symbols (map from lucide names).
 
+### 11.1 Dark theme
+The web ships a **full dark token set that mirrors every `:root` token one-for-one**. Because
+the whole app consumes colour through semantic names (`bg-card`, `text-foreground`,
+`border-border`…), overriding the variables is the entire implementation — there is not a
+single per-component dark override. Compose works the same way: build **two complete
+`ColorScheme`s + one matching extension-colour set** and change nothing at the call sites. A
+screen that hardcodes a colour (the web had a literal `bg-white/60` that had to become
+`bg-card/60`) is the one thing that breaks this, and it breaks silently — white-on-white in
+dark mode. Grep for raw colour literals before you ship.
+
+**Two rules when adding a token**, or the pairs drift apart:
+- A `*-light` tint is a **background** — it goes *dark* in dark mode, while its solid
+  counterpart *brightens* to stay readable on top of it.
+- A `*-foreground` is the text that sits **on** the solid colour, so for the mid-tone status
+  colours (success / warning / error / info / brand) it flips to a dark shade.
+
+**Mode selection — three states, not two.** The stored value is `light` / `dark` / *unset*;
+while it is unset the app follows the OS and keeps following it if the system setting changes
+mid-session. An explicit choice ends that. On Android:
+`isSystemInDarkTheme()` as the default, a DataStore `theme` key as the override, both folded
+into one `themeMode` flow read by the root composable.
+
+**Boot with the right theme.** The web needs a synchronous inline `<script>` in `<head>` to
+add `.dark` before first paint, or a returning dark-mode user gets a white flash. Android's
+equivalent problem is the **launch theme**: set the windowBackground in `themes.xml` /
+`themes-night.xml` so the cold-start window matches, and read the persisted mode *before*
+`setContent`. Also set `colorScheme` on the window (`WindowCompat` + light/dark status and
+navigation bar icons) so system chrome, scrollbars, and text handles follow.
+
+- **Transition:** animate only colour, never layout — the web transitions
+  `background-color` / `color` over 0.25s and skips it under `prefers-reduced-motion`.
+  Compose: `animateColorAsState`, gated on
+  `Settings.Global.TRANSITION_ANIMATION_SCALE == 0f` / the accessibility reduce-motion setting.
+- **Dynamic colour is deliberately *not* used.** Material You would override the brand palette
+  the tokens define; keep the fixed schemes so both platforms look like the same product.
+
 **App identity** (from the web `manifest.json` — carry it over so both platforms match):
 name **Bachat Khata**, short name **BachatKhata**, description *"Your Secure Personal Finance
 Companion"*, theme color **`#1d4ed8`** (= `primary`), background `#ffffff`, **portrait**
-orientation. The web ships a `sw.js` shell cache for offline loads; on Android that role is
-filled by the APK itself plus Room + Firestore's offline persistence, so there is nothing to
-port — only the branding values above.
+orientation. The web's `sw.js` has no Android counterpart — the APK plus Room fill that role —
+but **one rule inside it does carry over**: the worker passes every cross-origin request
+straight through and never stores it, because Cache Storage is unencrypted disk and those
+responses hold financial data and identity tokens. That is the same decision as §4.3, and on
+Android it is Firestore's disk cache you have to switch off to honour it.
 
 ---
 
 ## 12. Build Checklist (order of operations)
 
 1. New Android Studio project (Empty Compose Activity, min SDK 24+), add deps (§1), `google-services.json`.
-2. `ui/theme/` — port color tokens, typography, shapes; Material 3 theme.
-3. Firebase console: enable Auth (email, Google, phone), Firestore, Storage.
+2. `ui/theme/` — port color tokens, typography, shapes; **both** light and dark
+   `ColorScheme`s plus the launch-theme/night-theme pair, and the `themeMode` flow (§11.1).
+   Do this before any screen exists — retrofitting dark mode means auditing every literal.
+3. Firebase console: enable Auth (email, Google, phone), Firestore, Storage. Pin Firestore to
+   `MemoryCacheSettings` in the same commit that initializes it (§4.3).
 4. **Room** entities + DAOs + `AppDatabase`; **DataStore** for prefs.
 5. `Encryption.kt` + the unlock/lock lifecycle (§4) — get this in before any real data lands,
    so nothing is ever written plaintext and has to be migrated.
@@ -980,18 +1170,23 @@ port — only the branding values above.
 7. **Pure logic** (`domain/`) — port all §5 modules (they're framework-free; unit-test them).
    `BucketConfig`/`Categories` first: `MoneyRule`, budgets, savings deposits and the Category
    Manager all resolve through them.
-8. Auth flow — splash, login (3 methods), register (+Firestore profile + Storage avatar),
-   PinLock (SHA-256 + BiometricPrompt), auto-lock via `ProcessLifecycleOwner`, and the
+8. `AvatarUtils` + `UserProfileRepository` (§4.2, §5.24) — the profile sits outside the
+   encrypted store and every auth screen depends on it, so land it before the auth flow.
+9. Auth flow — splash, login (3 methods) sharing one `finishSignIn` that rehydrates the cloud
+   profile, register (+Firestore profile doc with a *real* avatar), PinLock (SHA-256 +
+   BiometricPrompt), auto-lock via `ProcessLifecycleOwner`, and the
    **signed-in-≠-unlocked** dashboard guard (§4).
-9. `NavGraph` + scaffold (bottom bar + FAB + mic + floating calculator) (§7).
-10. Reusable composables & bottom sheets (§9).
-11. Feature screens (§8) — each wired to its ViewModel/Flows + domain modules.
-12. Device integrations (§10): SpeechRecognizer, WorkManager catch-up, CSV/PDF/Excel,
+10. `NavGraph` + scaffold (bottom bar + FAB + mic + floating calculator) (§7).
+11. Reusable composables & bottom sheets (§9), including the header `ThemeToggle`.
+12. Feature screens (§8) — each wired to its ViewModel/Flows + domain modules.
+13. Device integrations (§10): SpeechRecognizer, WorkManager catch-up, CSV/PDF/Excel,
     WhatsApp & SMS intents, notifications, FX refresh, connectivity retry.
-13. Localization — `values-hi` / `values-mr` string resources + language picker.
-14. Bundle `assets/lessons/lessons.json`; QA offline-first + sync parity vs the web app.
+14. Localization — `values-hi` / `values-mr` string resources + language picker.
+15. Bundle `assets/lessons/lessons.json`; QA offline-first + sync parity vs the web app.
     Specifically test: airplane-mode edit → logout warning, PIN change → re-encrypt, restore
-    of a backup taken before a key existed, and bucket resolution for archived categories.
+    of a backup taken before a key existed, bucket resolution for archived categories,
+    **sign-out → sign-in keeps the edited name and a removed photo**, **every screen in dark
+    mode including cold start**, and that no plaintext financial data lands on disk (§4.3).
 
 ---
 
@@ -1000,4 +1195,4 @@ every feature and function of the web app into its Android Studio (Kotlin + Jetp
 equivalent. Behavior and business logic are identical; only platform I/O, UI, and device APIs
 change.*
 
-*Last synced against the web app at commit `1066c8f` (2026-07-18).*
+*Last synced against the web app at commit `b56562a` (2026-08-07).*
