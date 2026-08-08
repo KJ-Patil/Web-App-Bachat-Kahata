@@ -23,6 +23,7 @@ export const CATEGORY_BUCKET_MAP: Record<string, BucketType> = {
   "Water Bill": "needs",
   "Internet": "needs",
   "Groceries": "needs",
+  "Food": "needs", // Eating in general; "Dining Out" stays a want
   "Fuel (Essential)": "needs",
   "Insurance": "needs",
   "Medical": "needs",

@@ -11,6 +11,7 @@ import {
   Briefcase,
   Zap,
   Coffee,
+  Utensils,
   TrendingUp,
   Gift,
   DollarSign,
@@ -75,6 +76,7 @@ export const CATEGORY_ICONS: Record<string, LucideIcon> = {
   Briefcase,
   Zap,
   Coffee,
+  Utensils,
   TrendingUp,
   Gift,
   DollarSign,
@@ -94,6 +96,7 @@ export function resolveCategoryIcon(iconName: string): LucideIcon {
 export const DEFAULT_CATEGORIES: CategoryData[] = [
   { id: "cat-1", name: "Housing", type: "expense", color: "#1d4ed8", iconName: "Home", bucket: "needs" },
   { id: "cat-2", name: "Groceries", type: "expense", color: "#059669", iconName: "ShoppingBag", bucket: "needs" },
+  { id: "cat-10", name: "Food", type: "expense", color: "#dc2626", iconName: "Utensils", bucket: "needs" },
   { id: "cat-3", name: "Entertainment", type: "expense", color: "#7c3aed", iconName: "Tv", bucket: "wants" },
   { id: "cat-4", name: "Investment", type: "expense", color: "#0891b2", iconName: "Layers", bucket: "investments" },
   { id: "cat-5", name: "Travel", type: "expense", color: "#ea580c", iconName: "Navigation", bucket: "wants" },
