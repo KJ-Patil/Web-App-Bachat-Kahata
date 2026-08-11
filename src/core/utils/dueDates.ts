@@ -9,20 +9,12 @@ import type {
 } from "@/core/store/dataStore";
 import { detectSubscriptions } from "@/core/insights/subscriptions";
 import { toDateKey } from "@/core/utils/calendar";
+import { calcEmi } from "@/core/math/loan";
 
 export interface DueItem {
   kind: "emi" | "subscription";
   label: string;
   amount: number;
-}
-
-/** Reducing-balance EMI (same formula as the EMI tracker). */
-function calcEmi(principal: number, annualRate: number, tenureMonths: number): number {
-  if (tenureMonths <= 0) return 0;
-  if (annualRate === 0) return principal / tenureMonths;
-  const r = annualRate / 100 / 12;
-  const factor = Math.pow(1 + r, tenureMonths);
-  return (principal * r * factor) / (factor - 1);
 }
 
 function addMonths(date: Date, months: number): Date {

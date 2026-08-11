@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getTotals, getTotalSaved } from "@/core/store/dataStore";
+import { getTotals, getTotalSaved, isUnlocked } from "@/core/store/dataStore";
 
 export interface CatchUpResult {
   executed: boolean;
@@ -57,6 +57,14 @@ export function runLazyCatchUpSync(): CatchUpResult {
     return { executed: false, healthScore: 70, weeklyInsights: [], lastRun: "" };
   }
 
+  // Nothing can be computed before the store is unlocked: every financial read
+  // returns its empty fallback, so the score would come out as the no-income
+  // floor of 50 — and then be cached for a week, hiding the real number long
+  // after the user signed in. Skip the run instead; the hook re-runs on unlock.
+  if (!isUnlocked()) {
+    return { executed: false, healthScore: 0, weeklyInsights: [], lastRun: "" };
+  }
+
   const now = Date.now();
   const lastRunStr = localStorage.getItem("last_catchup_run");
   const lastRunTime = lastRunStr ? Number(lastRunStr) : 0;
@@ -78,15 +86,25 @@ export function runLazyCatchUpSync(): CatchUpResult {
     };
   }
 
-  // Load existing cached metrics
-  const cachedScore = Number(localStorage.getItem("financial_health_score") || "75");
-  const cachedInsights = JSON.parse(
-    localStorage.getItem("weekly_insights") || 
-    JSON.stringify([
-      "Discretionary budgets remain within threshold bounds. Good job!",
-      "Active savings goals show progress. Keep up the consistent layout syncs."
-    ])
-  );
+  // Load existing cached metrics. Both reads fall back to a fresh computation
+  // rather than to invented numbers — the previous default of "75" plus two
+  // congratulatory sentences reported a health score the user had never earned.
+  const storedScore = Number(localStorage.getItem("financial_health_score"));
+  const cachedScore = Number.isFinite(storedScore) && storedScore > 0
+    ? storedScore
+    : calculateFinancialHealthScore();
+
+  let cachedInsights: string[];
+  try {
+    const raw = localStorage.getItem("weekly_insights");
+    const parsed = raw ? JSON.parse(raw) : null;
+    // A corrupt or half-written value used to throw straight out of this
+    // function, and it is called during dashboard mount — so it took the whole
+    // app down rather than degrading to a recomputed list.
+    cachedInsights = Array.isArray(parsed) ? parsed : generateWeeklyInsights();
+  } catch {
+    cachedInsights = generateWeeklyInsights();
+  }
 
   return {
     executed: false,
@@ -103,8 +121,14 @@ export function useLazyCatchUpSync() {
   const [syncData, setSyncData] = useState<CatchUpResult | null>(null);
 
   useEffect(() => {
-    const result = runLazyCatchUpSync();
-    setSyncData(result);
+    // Re-run on every store change, not just on mount. At mount the store is
+    // usually still locked (the PIN hasn't been entered), so the first run is a
+    // no-op; unlocking fires `datastore:change`, and that is when the score can
+    // actually be computed from real data.
+    const run = () => setSyncData(runLazyCatchUpSync());
+    run();
+    window.addEventListener("datastore:change", run);
+    return () => window.removeEventListener("datastore:change", run);
   }, []);
 
   return syncData;

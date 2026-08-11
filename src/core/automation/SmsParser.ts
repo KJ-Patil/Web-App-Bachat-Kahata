@@ -107,6 +107,16 @@ const BANK_RULES: BankRule[] = [
 
 // ─── Signal Keyword Sets ──────────────────────────────────────────────────────
 
+/**
+ * Direction words, matched as WHOLE words.
+ *
+ * Deliberately excluded, because they do not indicate a direction:
+ *  - "neft", "imps", "rtgs", "upi" — transfer rails, used both ways. "neft"
+ *    previously sat in CREDIT_SIGNALS, so any debit carrying a NEFT reference
+ *    ("Rs 3200 debited … Ref NEFT/123456") was booked as income.
+ *  - "payment" — reads either way ("payment sent" / "payment received"), so it
+ *    only added noise next to the explicit verbs already listed.
+ */
 const DEBIT_SIGNALS = [
   "debit",
   "debited",
@@ -114,7 +124,6 @@ const DEBIT_SIGNALS = [
   "sent",
   "withdrawn",
   "purchase",
-  "payment",
   "spent",
   "charged",
 ];
@@ -128,9 +137,15 @@ const CREDIT_SIGNALS = [
   "cashback",
   "salary",
   "inward",
-  "neft",
   "imps cr",
 ];
+
+/**
+ * "Credit Card" / "Debit Card" name the instrument, not the direction — a card
+ * spend is an EXPENSE despite carrying the word "credit". Card SMS are among the
+ * most common kind, so this phrase is blanked out before any direction scan.
+ */
+const CARD_PHRASE = /\b(?:credit|debit)\s+card\b/gi;
 
 // ─── Description Noise Tokens ─────────────────────────────────────────────────
 
@@ -161,15 +176,34 @@ function parseAmount(raw: string): number {
   return isNaN(val) ? 0 : val;
 }
 
+/** Position of the earliest whole-word match from `words`, or -1 if none. */
+function firstSignalIndex(text: string, words: string[]): number {
+  let earliest = -1;
+  for (const word of words) {
+    const match = new RegExp(`\\b${word}\\b`, "i").exec(text);
+    if (match && (earliest === -1 || match.index < earliest)) earliest = match.index;
+  }
+  return earliest;
+}
+
+/**
+ * Infer the direction from the message body, used when the matched bank pattern
+ * didn't capture an explicit `typeword`.
+ *
+ * Whole-word matching (not substring) keeps "credit" from firing inside unrelated
+ * text, and when both a debit and a credit word appear the EARLIER one wins:
+ * bank SMS state the direction up front ("Rs 3200 debited from …") and mention
+ * references, rails and offers afterwards.
+ */
 function detectTypeFromKeywords(text: string): ParsedTransactionType | null {
-  const lower = text.toLowerCase();
-  for (const signal of CREDIT_SIGNALS) {
-    if (lower.includes(signal)) return "income";
-  }
-  for (const signal of DEBIT_SIGNALS) {
-    if (lower.includes(signal)) return "expense";
-  }
-  return null;
+  const scrubbed = text.replace(CARD_PHRASE, " ");
+  const debitAt = firstSignalIndex(scrubbed, DEBIT_SIGNALS);
+  const creditAt = firstSignalIndex(scrubbed, CREDIT_SIGNALS);
+
+  if (debitAt === -1 && creditAt === -1) return null;
+  if (creditAt === -1) return "expense";
+  if (debitAt === -1) return "income";
+  return debitAt < creditAt ? "expense" : "income";
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────

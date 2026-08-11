@@ -4,7 +4,7 @@ import React, { useState, useEffect, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Users, Receipt, Plus, Settings, CheckCircle2, TrendingDown, AlertTriangle, Copy, Check, X, User, ChevronDown, Trash2, Loader2 } from "lucide-react";
-import { doc, collection, onSnapshot, getDoc, getDocs, addDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import { doc, collection, onSnapshot, getDoc, getDocs, addDoc, updateDoc, deleteDoc, serverTimestamp, increment } from "firebase/firestore";
 import { formatAmount, getAllCurrencies, getExchangeRate, toBaseAmount, fromBaseAmount } from "@/core/utils/currencyManager";
 import { GroupExpense, useFamilyGroups, getFamilyGroups, setFamilyGroups, computeGroupPoolBalance } from "@/core/store/dataStore";
 import { db, auth } from "@/config/firebase";
@@ -238,8 +238,14 @@ export default function FamilyGroupPage({
       });
       // Mirror the running pool total onto the group doc so the card list
       // (which reads group.totalBalance) stays in sync for everyone.
+      //
+      // `increment` rather than `poolBalance + amountInBase`: that read-then-write
+      // used a total captured from THIS render, so two members filing a claim at
+      // the same time both started from the same figure and the second write
+      // silently dropped the first. increment() is applied server-side against
+      // whatever the current value is, so concurrent claims both land.
       await updateDoc(doc(db, "familyGroups", group.code), {
-        totalBalance: poolBalance + amountInBase,
+        totalBalance: increment(amountInBase),
       });
     } catch {
       // Offline / permission error — the claim just won't be saved; the live

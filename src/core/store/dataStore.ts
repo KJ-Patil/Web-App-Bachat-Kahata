@@ -8,6 +8,7 @@ import { deriveKeyFromPin, encryptValue, decryptValue, isEncrypted } from "./enc
 // Type-only: erased at compile time, so this does not form an import cycle with
 // categories.ts, which imports the category accessors below at runtime.
 import type { CategoryData } from "@/core/utils/categories";
+import { calcOutstandingPrincipal } from "@/core/math/loan";
 
 /**
  * Central data layer — the single source of truth for the app.
@@ -959,12 +960,24 @@ export function getTotalSaved(goals: SavingsGoal[] = getSavingsGoals()): number 
   return goals.reduce((acc, g) => acc + (Number(g.current) || 0), 0);
 }
 
-/** Best-effort outstanding debt from the loans store (0 when none). */
+/**
+ * Outstanding debt across all loans — what would settle them today.
+ *
+ * Previously this looked for `outstanding` / `balance` / `amount` fields that
+ * LoanRecord does not have, so it always fell through to `principal`: the
+ * reported debt never moved no matter how many EMIs had been paid, and the
+ * health score inherited that. It is now derived from the amortization schedule,
+ * so it falls as `monthsPaid` rises and reaches 0 when the loan closes.
+ */
 export function getTotalDebt(): number {
-  const loans = readJSON<Array<Record<string, unknown>>>(KEYS.loans, []);
-  return loans.reduce((acc, loan) => {
-    const value = loan.outstanding ?? loan.balance ?? loan.principal ?? loan.amount ?? 0;
-    return acc + (Number(value) || 0);
+  return getLoans().reduce((acc, loan) => {
+    const owed = calcOutstandingPrincipal({
+      principal: Number(loan.principal) || 0,
+      annualInterestRate: Number(loan.annualInterestRate) || 0,
+      tenureMonths: Number(loan.tenureMonths) || 0,
+      monthsPaid: Number(loan.monthsPaid) || 0,
+    });
+    return acc + (Number.isFinite(owed) ? owed : 0);
   }, 0);
 }
 

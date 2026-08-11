@@ -12,42 +12,63 @@ export function evaluateArithmetic(expr: string): number {
     throw new Error("Invalid characters");
   }
 
-  // Tokenize the expression
+  // ── Tokenize ───────────────────────────────────────────────────────────────
+  // A unary minus is folded into the value it applies to, rather than being
+  // rewritten as "0 -". That older trick only worked next to + and −, which
+  // share precedence: "2*-3" became "2*0-3" = −3 instead of −6, and "8/-2"
+  // became "8/0-2", which threw "Division by zero".
   const tokens: string[] = [];
   let numBuffer = "";
+  // True where an OPERAND is expected — the start of the expression, just after
+  // "(", or just after an operator. That is exactly where "-" means "negative"
+  // rather than "subtract".
+  let expectOperand = true;
+  // Set when a unary minus should be folded into the number literal that follows.
+  let negateNext = false;
+
+  const flushNumber = () => {
+    if (!numBuffer) return;
+    tokens.push(negateNext ? `-${numBuffer}` : numBuffer);
+    numBuffer = "";
+    negateNext = false;
+    expectOperand = false;
+  };
 
   for (let i = 0; i < clean.length; i++) {
     const char = clean[i];
 
     if (/[0-9.]/.test(char)) {
       numBuffer += char;
-    } else {
-      if (numBuffer) {
-        tokens.push(numBuffer);
-        numBuffer = "";
-      }
+      continue;
+    }
 
-      // Handle unary minus by prepending "0" before the operator if it is
-      // at index 0 or immediately follows another operator or "("
+    flushNumber();
+
+    if (char === "(") {
+      tokens.push(char);
+      expectOperand = true;
+    } else if (char === ")") {
+      tokens.push(char);
+      expectOperand = false;
+    } else if (expectOperand && (char === "+" || char === "-")) {
+      // A leading sign. "+" is a no-op. "-" either negates the number that
+      // follows, or — when it applies to a bracketed group — becomes an explicit
+      // "-1 *" factor so it binds to the whole group and not just its first term.
       if (char === "-") {
-        const lastToken = tokens[tokens.length - 1];
-        const isUnary =
-          tokens.length === 0 ||
-          lastToken === "(" ||
-          ["+", "-", "*", "/"].includes(lastToken);
-        if (isUnary) {
-          tokens.push("0");
+        const next = clean[i + 1];
+        if (next && /[0-9.]/.test(next)) {
+          negateNext = true;
+        } else {
+          tokens.push("-1", "*");
         }
       }
-
-      if (["+", "-", "*", "/", "(", ")"].includes(char)) {
-        tokens.push(char);
-      }
+      // An operand is still expected either way.
+    } else if (["+", "-", "*", "/"].includes(char)) {
+      tokens.push(char);
+      expectOperand = true;
     }
   }
-  if (numBuffer) {
-    tokens.push(numBuffer);
-  }
+  flushNumber();
 
   // Shunting-Yard Algorithm
   const precedence: Record<string, number> = {

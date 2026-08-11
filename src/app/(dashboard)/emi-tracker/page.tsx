@@ -18,16 +18,9 @@ import {
 import { formatAmount } from "@/core/utils/currencyManager";
 import AddLoanModal, { type LoanRecord } from "@/components/modals/AddLoanModal";
 import { useLoans, setLoans } from "@/core/store/dataStore";
+import { calcEmi, calcOutstandingPrincipal, calcRemainingPayments } from "@/core/math/loan";
 
-// ─── EMI Formula (reducing-balance compound) ─────────────────────────────────
-
-function calcEmi(principal: number, annualRate: number, tenureMonths: number): number {
-  if (tenureMonths <= 0) return 0;
-  if (annualRate === 0) return principal / tenureMonths;
-  const r = annualRate / 100 / 12;
-  const factor = Math.pow(1 + r, tenureMonths);
-  return (principal * r * factor) / (factor - 1);
-}
+// ─── Amortization ─────────────────────────────────────────────────────────────
 
 function calcAmortization(loan: LoanRecord) {
   const emi = calcEmi(loan.principal, loan.annualInterestRate, loan.tenureMonths);
@@ -35,7 +28,12 @@ function calcAmortization(loan: LoanRecord) {
   const totalInterest = totalPayable - loan.principal;
   const remaining = loan.tenureMonths - loan.monthsPaid;
   const amountPaid = emi * loan.monthsPaid;
-  const outstandingBalance = emi * remaining;
+  // What is genuinely still owed — NOT `emi * remaining`, which is the sum of
+  // future instalments and so bundles in every future interest charge.
+  const outstandingBalance = calcOutstandingPrincipal(loan);
+  // The sum of instalments still to be paid. Shown separately so the two
+  // numbers are never confused for each other again.
+  const remainingPayments = calcRemainingPayments(loan);
   const progressPct =
     loan.tenureMonths > 0 ? (loan.monthsPaid / loan.tenureMonths) * 100 : 0;
 
@@ -57,6 +55,7 @@ function calcAmortization(loan: LoanRecord) {
     remaining,
     amountPaid,
     outstandingBalance,
+    remainingPayments,
     progressPct,
     completionDate,
   };
@@ -204,7 +203,7 @@ function LoanCard({ loan, currencyCode, onDelete }: LoanCardProps) {
           </div>
           <div className="flex justify-between text-[9px] text-foreground-muted font-semibold">
             <span>{formatAmount(calc.amountPaid, currencyCode)} paid</span>
-            <span>{formatAmount(calc.outstandingBalance, currencyCode)} remaining</span>
+            <span>{formatAmount(calc.remainingPayments, currencyCode)} left to pay</span>
           </div>
         </div>
       </div>
@@ -389,7 +388,7 @@ export default function EmiTrackerPage() {
             {
               label: "Total Outstanding",
               value: formatAmount(summary.totalOutstanding, activeCurrency),
-              sub: "Remaining principal",
+              sub: "Settle-today balance",
               icon: TrendingDown,
               accent: "text-brand",
               bg: "bg-brand-light",

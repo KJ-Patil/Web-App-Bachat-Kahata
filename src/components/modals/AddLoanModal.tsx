@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { X, CreditCard, CheckCircle2, Info } from "lucide-react";
 import { formatAmount, toBaseAmount } from "@/core/utils/currencyManager";
+import { calcEmi, calcOutstandingPrincipal } from "@/core/math/loan";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -22,15 +23,6 @@ interface AddLoanModalProps {
   onClose: () => void;
   onSave: (loan: LoanRecord) => void;
   currencyCode?: string;
-}
-
-// ─── EMI Formula ──────────────────────────────────────────────────────────────
-// Standard reducing-balance compound formula:  EMI = P × r(1+r)^n / ((1+r)^n − 1)
-function calcEmi(principal: number, annualRate: number, tenureMonths: number): number {
-  if (annualRate === 0) return principal / tenureMonths;
-  const r = annualRate / 100 / 12;
-  const factor = Math.pow(1 + r, tenureMonths);
-  return (principal * r * factor) / (factor - 1);
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────────
@@ -92,13 +84,15 @@ export default function AddLoanModal({
   const totalPayable = emi * n;
   const totalInterest = totalPayable - p;
   const remaining = n - mp;
-  const outstandingPrincipal =
-    p > 0 && r >= 0 && n > 0 && mp > 0
-      ? calcEmi(p, r, n) * remaining - (totalPayable - p * (1 + r / 100 / 12) ** n + p)
-      : p;
-
-  // Simpler outstanding: remaining EMI sum
-  const totalRemaining = emi * remaining;
+  // What would settle the loan today. The old expression here was an ad-hoc
+  // formula that no one read (it was never rendered); this is the standard
+  // present value of the instalments still due.
+  const outstandingPrincipal = calcOutstandingPrincipal({
+    principal: p,
+    annualInterestRate: r,
+    tenureMonths: n,
+    monthsPaid: mp,
+  });
 
   const isFormValid =
     name.trim().length > 0 &&
@@ -332,8 +326,8 @@ export default function AddLoanModal({
                       { label: "Total Payable", value: formatAmount(totalPayable, currencyCode, { convert: false }) },
                       { label: "Total Interest", value: formatAmount(totalInterest, currencyCode, { convert: false }) },
                       {
-                        label: "Amount Remaining",
-                        value: formatAmount(totalRemaining, currencyCode, { convert: false }),
+                        label: "Outstanding Now",
+                        value: formatAmount(outstandingPrincipal, currencyCode, { convert: false }),
                       },
                     ].map(({ label, value }) => (
                       <div key={label} className="space-y-0.5">
