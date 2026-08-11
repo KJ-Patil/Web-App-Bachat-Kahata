@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { X, CheckCircle2, Target, Calendar, Coins, Layers } from "lucide-react";
 import { SavingsGoal, getSavingsGoals, setSavingsGoals, generateId } from "@/core/store/dataStore";
 import { BUCKET_LABELS, type BucketType } from "@/core/utils/bucketConfig";
+import { toBaseAmount } from "@/core/utils/currencyManager";
 
 interface AddGoalModalProps {
   isOpen: boolean;
@@ -34,7 +35,8 @@ export default function AddGoalModal({
     const newGoal: SavingsGoal = {
       id: generateId(),
       name: name.trim(),
-      target: numTarget,
+      // Typed in the active display currency; goals are stored in base (INR).
+      target: toBaseAmount(numTarget, localStorage.getItem("active_currency") || "INR"),
       current: 0,
       deadline: new Date(deadline).toISOString(),
       bucket,

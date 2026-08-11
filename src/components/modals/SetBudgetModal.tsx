@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { X, Check, Save } from "lucide-react";
 import { getBudgets, setBudgets } from "@/core/store/dataStore";
 import { getActiveCategories } from "@/core/utils/categories";
+import { getCurrencySymbol, toBaseAmount, fromBaseAmount } from "@/core/utils/currencyManager";
 
 interface SetBudgetModalProps {
   isOpen: boolean;
@@ -21,25 +22,35 @@ export default function SetBudgetModal({
   const [success, setSuccess] = useState(false);
   // Budgetable categories are the user's active expense categories.
   const [categories, setCategories] = useState<string[]>([]);
+  // Budgets are stored in base (INR) but entered and shown in the user's active
+  // display currency, so the field converts on the way in and out. Without this
+  // a budget typed under a "$" label would be saved as ₹ and then compared
+  // against spending in a different unit.
+  const [activeCurrency, setActiveCurrency] = useState("INR");
+
+  /** A stored base budget as a plain number in the active currency, for the input. */
+  const toField = (base: number | undefined, currency: string): string =>
+    base ? String(Math.round(fromBaseAmount(base, currency))) : "";
 
   useEffect(() => {
     if (isOpen) {
       const names = getActiveCategories("expense").map((c) => c.name);
       const first = names[0] ?? "";
       const budgets = getBudgets();
+      const currency = localStorage.getItem("active_currency") || "INR";
       setTimeout(() => {
         setCategories(names);
         setSuccess(false);
         setCategory(first);
-        setLimit(first && budgets[first] ? String(budgets[first]) : "");
+        setActiveCurrency(currency);
+        setLimit(first ? toField(budgets[first], currency) : "");
       }, 0);
     }
   }, [isOpen]);
 
   const handleCategorySelect = (cat: string) => {
     setCategory(cat);
-    const budgets = getBudgets();
-    setLimit(budgets[cat] ? String(budgets[cat]) : "");
+    setLimit(toField(getBudgets()[cat], activeCurrency));
   };
 
   if (!isOpen) return null;
@@ -53,7 +64,7 @@ export default function SetBudgetModal({
     // cloud, and broadcast to reactive subscribers (e.g. the home dashboard).
     // Writing localStorage directly here would be silently reverted by the
     // next Firestore snapshot and would never notify other pages.
-    setBudgets({ ...getBudgets(), [category]: numLimit });
+    setBudgets({ ...getBudgets(), [category]: toBaseAmount(numLimit, activeCurrency) });
 
     setSuccess(true);
     setTimeout(() => {
@@ -127,11 +138,11 @@ export default function SetBudgetModal({
               {/* Numeric Limit Input */}
               <div className="space-y-1">
                 <label htmlFor="limit" className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">
-                  Monthly Capital Limit (INR ₹)
+                  Monthly Capital Limit ({activeCurrency})
                 </label>
                 <div className="relative flex items-center">
                   <span className="absolute inset-y-0 left-0 flex items-center pl-4 font-bold text-foreground-secondary pointer-events-none">
-                    ₹
+                    {getCurrencySymbol(activeCurrency) || "₹"}
                   </span>
                   <input
                     id="limit"

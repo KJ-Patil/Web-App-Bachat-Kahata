@@ -5,7 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { Home, Settings, LogOut, Plus, Globe, List, BookOpen, BarChart3, Download, CreditCard, Mic, Users, Activity, SlidersHorizontal, Receipt, BrainCircuit, GraduationCap, Target, PiggyBank, Sparkles, Flame, Repeat, ArrowLeftRight, CalendarDays, PieChart } from "lucide-react";
 import { useLazyCatchUpSync } from "@/core/store/CatchUpSync";
-import { clearFinancialData, clearLocalCache, flushPendingWrites, hasUnsyncedWrites, isUnlocked, tryAutoUnlock } from "@/core/store/dataStore";
+import { clearLocalCache, flushPendingWrites, hasUnsyncedWrites, isUnlocked, tryAutoUnlock } from "@/core/store/dataStore";
 import { auth } from "@/config/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import AddTransactionModal from "@/components/modals/AddTransactionModal";
@@ -42,6 +42,17 @@ const NAV_ITEMS: NavigationItem[] = [
   { nameKey: "nav.emiTracker", href: "/emi-tracker", icon: CreditCard },
   { nameKey: "nav.export", href: "/export", icon: Download },
   { nameKey: "nav.settings", href: "/settings", icon: Settings },
+];
+
+/**
+ * Local-only caches written by an older build that seeded fabricated values.
+ * Nothing here is synced or user-entered — see the cleanup effect below.
+ */
+const LEGACY_SEED_KEYS = [
+  "total_income",
+  "total_savings",
+  "financial_health_score",
+  "weekly_insights",
 ];
 
 export default function DashboardLayout({
@@ -87,15 +98,22 @@ export default function DashboardLayout({
     return unsub;
   }, [router]);
 
-  // One-time purge of legacy seeded/demo data (the old fabricated balances).
-  // Runs exactly once per device, then never touches real data the user adds.
+  // One-time removal of legacy seeded/demo values (the old fabricated balances
+  // and derived caches from an earlier build).
+  //
+  // This must NOT go through clearFinancialData(): that writes empty defaults
+  // through the data store, which mirrors them to Firestore. The "already ran"
+  // flag lives in localStorage, so it is absent on every browser the app has not
+  // run in before — meaning the purge fired on new devices, where there is no
+  // legacy data to clean and the cloud holds the user's only copy. It wiped that
+  // copy. The keys below are local-only derived caches, so removing them
+  // directly does the intended job with no cloud write at all.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const CLEARED_FLAG = "legacy_seed_cleared_v1";
-    if (!localStorage.getItem(CLEARED_FLAG)) {
-      clearFinancialData();
-      localStorage.setItem(CLEARED_FLAG, "true");
-    }
+    if (localStorage.getItem(CLEARED_FLAG)) return;
+    LEGACY_SEED_KEYS.forEach((key) => localStorage.removeItem(key));
+    localStorage.setItem(CLEARED_FLAG, "true");
   }, []);
 
   // Trigger client-side Lazy CatchUp synchronization task

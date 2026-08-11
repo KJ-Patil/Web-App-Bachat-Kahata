@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { X, CreditCard, CheckCircle2, Info } from "lucide-react";
-import { formatAmount } from "@/core/utils/currencyManager";
+import { formatAmount, toBaseAmount } from "@/core/utils/currencyManager";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -116,7 +116,10 @@ export default function AddLoanModal({
       id: Math.random().toString(36).substring(2, 9),
       name: name.trim(),
       lender: lender === "Other" ? (customLender.trim() || "Other") : lender,
-      principal: p,
+      // `p` is what the user typed, in `currencyCode` (the active display
+      // currency). Loans are stored in base (INR) like every other amount, and
+      // the EMI/interest figures are re-derived from this on read.
+      principal: toBaseAmount(p, currencyCode),
       annualInterestRate: r,
       tenureMonths: n,
       monthsPaid: mp,
@@ -321,13 +324,16 @@ export default function AddLoanModal({
                     Amortization Preview
                   </div>
                   <div className="grid grid-cols-2 gap-3">
+                    {/* These are derived from the principal as TYPED, so they
+                        are already in `currencyCode` — formatting must not
+                        convert again (that only applies to stored base amounts). */}
                     {[
-                      { label: "Monthly EMI", value: formatAmount(emi, currencyCode) },
-                      { label: "Total Payable", value: formatAmount(totalPayable, currencyCode) },
-                      { label: "Total Interest", value: formatAmount(totalInterest, currencyCode) },
+                      { label: "Monthly EMI", value: formatAmount(emi, currencyCode, { convert: false }) },
+                      { label: "Total Payable", value: formatAmount(totalPayable, currencyCode, { convert: false }) },
+                      { label: "Total Interest", value: formatAmount(totalInterest, currencyCode, { convert: false }) },
                       {
                         label: "Amount Remaining",
-                        value: formatAmount(totalRemaining, currencyCode),
+                        value: formatAmount(totalRemaining, currencyCode, { convert: false }),
                       },
                     ].map(({ label, value }) => (
                       <div key={label} className="space-y-0.5">

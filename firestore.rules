@@ -20,11 +20,18 @@ service cloud.firestore {
       allow create: if request.auth != null
         && request.auth.uid in request.resource.data.memberUids;
 
-      // Updates: either you're already a member (editing/leaving), or you're
-      // joining by adding your own UID to the members list.
+      // Updates: either you're already a member (editing/leaving), or you're a
+      // newcomer joining by code.
+      //
+      // A newcomer may ONLY append their own UID. Testing "is my uid in the new
+      // list" is not enough: it lets any signed-in user rewrite memberUids to
+      // just themselves, which both grants access to a stranger's group and
+      // evicts every real member. So the join branch requires the resulting list
+      // to be exactly the existing one plus this caller.
       allow update: if request.auth != null
         && (request.auth.uid in resource.data.memberUids
-            || request.auth.uid in request.resource.data.memberUids);
+            || request.resource.data.memberUids
+               == resource.data.memberUids.concat([request.auth.uid]));
 
       // Only current members may delete the group document.
       allow delete: if request.auth != null

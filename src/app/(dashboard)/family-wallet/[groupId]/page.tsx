@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Users, Receipt, Plus, Settings, CheckCircle2, TrendingDown, AlertTriangle, Copy, Check, X, User, ChevronDown, Trash2, Loader2 } from "lucide-react";
 import { doc, collection, onSnapshot, getDoc, getDocs, addDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
-import { formatAmount, getAllCurrencies, getExchangeRate } from "@/core/utils/currencyManager";
+import { formatAmount, getAllCurrencies, getExchangeRate, toBaseAmount, fromBaseAmount } from "@/core/utils/currencyManager";
 import { GroupExpense, useFamilyGroups, getFamilyGroups, setFamilyGroups, computeGroupPoolBalance } from "@/core/store/dataStore";
 import { db, auth } from "@/config/firebase";
 
@@ -130,16 +130,21 @@ export default function FamilyGroupPage({
   };
 
   const handleOpenLimit = () => {
-    setLimitInput(group?.spendingLimit?.toString() || "");
+    // The limit is stored in base (INR) but the field is shown in the active
+    // display currency, so convert out here and back in on save — otherwise the
+    // limit would be compared against a pool balance in a different unit.
+    const stored = group?.spendingLimit;
+    setLimitInput(stored ? String(Math.round(fromBaseAmount(stored, activeCurrency))) : "");
     setIsLimitOpen(true);
   };
 
   const handleSaveLimit = (e: React.FormEvent) => {
     e.preventDefault();
     const num = parseFloat(limitInput);
-    if (isNaN(num)) return; 
+    if (isNaN(num)) return;
 
-    const updatedGroups = groups.map((g) => g.id === groupId ? { ...g, spendingLimit: num } : g);
+    const baseLimit = toBaseAmount(num, activeCurrency);
+    const updatedGroups = groups.map((g) => g.id === groupId ? { ...g, spendingLimit: baseLimit } : g);
     setFamilyGroups(updatedGroups);
     setIsLimitOpen(false);
   };

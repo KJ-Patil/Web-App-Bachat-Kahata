@@ -11,7 +11,7 @@ import {
   isExtraCategory,
   isIncomeExtraCategory,
 } from "@/core/utils/categories";
-import { getCurrencySymbol } from "@/core/utils/currencyManager";
+import { getCurrencySymbol, toBaseAmount } from "@/core/utils/currencyManager";
 import type { CategoryData } from "@/components/modals/AddCategoryModal";
 
 interface AddTransactionModalProps {
@@ -94,15 +94,21 @@ export default function AddTransactionModal({
     // original price + discount are kept so the saving stays visible.
     const effectiveAmount = transactionType === "expense" ? finalAmount : numAmount;
 
+    // The figures above are in the ACTIVE display currency — that's what the
+    // user typed, and what the live breakdown above shows. The store holds
+    // everything in base (INR), so convert on the way in; otherwise "100" typed
+    // under a "$" label would be saved as ₹100 and read back as $1.20.
+    const baseAmount = toBaseAmount(effectiveAmount, activeCurrency);
+
     // Create and persist the new record through the central store.
     addTransaction({
-      amount: effectiveAmount,
+      amount: baseAmount,
       type: transactionType,
       category: category,
       description: description || (transactionType === "income" ? `${category} Inflow` : `${category} Cost`),
       ...(hasDiscount && {
-        originalAmount: numAmount,
-        discountAmount: discountAmount,
+        originalAmount: toBaseAmount(numAmount, activeCurrency),
+        discountAmount: toBaseAmount(discountAmount, activeCurrency),
       }),
     });
 

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { X, Check, ArrowUpRight } from "lucide-react";
 import { addTransaction, getSavingsGoals, setSavingsGoals } from "@/core/store/dataStore";
 import { SAVINGS_DEPOSIT_CATEGORY } from "@/core/utils/bucketConfig";
+import { toBaseAmount } from "@/core/utils/currencyManager";
 
 interface LogDepositModalProps {
   isOpen: boolean;
@@ -22,12 +23,16 @@ export default function LogDepositModal({
 }: LogDepositModalProps) {
   const [amount, setAmount] = useState("");
   const [success, setSuccess] = useState(false);
+  // Deposits are typed in the user's active display currency; goals and the
+  // ledger store base (INR), so the typed value is converted on submit.
+  const [activeCurrency, setActiveCurrency] = useState("INR");
 
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => {
         setAmount("");
         setSuccess(false);
+        setActiveCurrency(localStorage.getItem("active_currency") || "INR");
       }, 0);
     }
   }, [isOpen]);
@@ -39,11 +44,15 @@ export default function LogDepositModal({
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount <= 0) return;
 
+    // Convert what the user typed (active currency) into the base currency the
+    // goal `current` and the transaction ledger are both stored in.
+    const baseAmount = toBaseAmount(numAmount, activeCurrency);
+
     // Update the targeted goal's accumulated amount.
     const goals = getSavingsGoals();
     const goal = goals.find((g) => g.id === goalId);
     const updatedGoals = goals.map((g) =>
-      g.id === goalId ? { ...g, current: g.current + numAmount } : g
+      g.id === goalId ? { ...g, current: g.current + baseAmount } : g
     );
     setSavingsGoals(updatedGoals);
 
@@ -52,7 +61,7 @@ export default function LogDepositModal({
     // saving for a phone counts as a "want" rather than an investment. Goals
     // created before the tag existed fall back to "investments" (old behaviour).
     addTransaction({
-      amount: numAmount,
+      amount: baseAmount,
       type: "expense", // Deposits to savings are out of active liquid flow
       category: SAVINGS_DEPOSIT_CATEGORY[goal?.bucket ?? "investments"],
       description: `Deposit to '${goalName}' vault`,

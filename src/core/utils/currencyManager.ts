@@ -103,6 +103,40 @@ export async function refreshExchangeRates(force = false): Promise<void> {
 }
 
 /**
+ * Convert an amount the user TYPED in `currencyCode` back to the base currency
+ * (INR) for storage — the exact inverse of the conversion `formatAmount` applies
+ * on the way out.
+ *
+ * Every amount input must go through this. Without it a user with USD active
+ * types `100` into a field labelled `$`, 100 is stored as ₹100, and it reads
+ * back as $1.20 — the value shrinks each time the display currency changes.
+ *
+ * @param amount the number as typed, in `currencyCode`
+ * @param currencyCode the currency the input was entered in (the active display
+ *   currency). Defaults to base, which is a no-op.
+ */
+export function toBaseAmount(amount: number, currencyCode: string = BASE_CURRENCY): number {
+  if (!Number.isFinite(amount)) return 0;
+  const rate = getExchangeRate(currencyCode);
+  // getExchangeRate already guarantees a finite positive rate, but guard anyway
+  // so a bad cache can never turn a real amount into Infinity/NaN.
+  return rate > 0 ? amount / rate : amount;
+}
+
+/**
+ * Convert a STORED base-currency amount into `currencyCode`, as a raw number.
+ *
+ * Use this to pre-fill an amount input from a stored value — the field shows a
+ * bare number in the active currency, so it needs the same conversion
+ * `formatAmount` does but without the symbol/grouping. `toBaseAmount` is the
+ * inverse, applied when the edited value is saved back.
+ */
+export function fromBaseAmount(amount: number, currencyCode: string = BASE_CURRENCY): number {
+  if (!Number.isFinite(amount)) return 0;
+  return amount * getExchangeRate(currencyCode);
+}
+
+/**
  * Formats a numeric amount into a currency string representation.
  * Supports Indian numbering layout (Lakhs/Crores) for INR and standard international configurations for other currencies.
  * 

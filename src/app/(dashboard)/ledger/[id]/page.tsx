@@ -17,7 +17,7 @@ import {
   Trash2,
   AlertTriangle,
 } from "lucide-react";
-import { formatAmount } from "@/core/utils/currencyManager";
+import { formatAmount, toBaseAmount } from "@/core/utils/currencyManager";
 import { Customer, LedgerEntry } from "../page";
 import {
   getLedgerCustomers,
@@ -91,6 +91,10 @@ export default function CustomerLedgerPage({
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount <= 0) return;
 
+    // The field is labelled with the active currency, but balances and the
+    // transaction ledger are stored in base (INR) — convert before recording.
+    const baseAmount = toBaseAmount(numAmount, activeCurrency);
+
     // Load active lists
     const customersList = getLedgerCustomers();
     if (customersList.length === 0) return;
@@ -98,7 +102,7 @@ export default function CustomerLedgerPage({
     // Calculate new balance
     // Gave: we gave goods/money, they owe us more (increases balance)
     // Got: we got payment/money, they owe us less (decreases balance)
-    const balanceAdjustment = entryType === "gave" ? numAmount : -numAmount;
+    const balanceAdjustment = entryType === "gave" ? baseAmount : -baseAmount;
     const nextBalance = customer.balance + balanceAdjustment;
 
     const entryDescription =
@@ -107,7 +111,7 @@ export default function CustomerLedgerPage({
     // Mirror into the transactions ledger through the data store so the change
     // syncs to the DB, fires the change event, and updates the dashboard totals.
     const tx = addTransaction({
-      amount: numAmount,
+      amount: baseAmount,
       type: entryType === "gave" ? "expense" : "income",
       category: "Ledger",
       description: `${entryType === "gave" ? "Gave to" : "Got from"} ${customer.name}: ${entryDescription}`,
@@ -115,7 +119,7 @@ export default function CustomerLedgerPage({
 
     const newLog: LedgerEntry = {
       id: generateId(),
-      amount: numAmount,
+      amount: baseAmount,
       type: entryType,
       description: entryDescription,
       date: tx.date,

@@ -395,6 +395,17 @@ function trackWrite(key: string, value: unknown): Promise<void> {
 function pushToFirestore(key: string, value: unknown): void {
   if (!SYNCED_KEYS.includes(key)) return; // not a synced key
   if (applyingRemote.has(key)) return; // came FROM the cloud, don't echo back
+  // A sensitive key written while the store is LOCKED cannot reflect real data:
+  // readJSON serves the empty fallback until unlock, so any read-modify-write
+  // before then produces a truncated value. Queuing it would let
+  // flushPendingWrites push that emptiness over the cloud copy once the user
+  // signs in — which is how a fresh device could wipe an account. Every real
+  // write path (Settings purge, backup restore, the entry modals) runs after
+  // unlock, so nothing legitimate is dropped here.
+  if (SENSITIVE_KEYS.includes(key) && !aesKey) {
+    console.warn(`[Firestore Sync] Skipped cloud write for "${key}": store is locked.`);
+    return;
+  }
   if (!currentUid) {
     // Not signed in yet: this change lives only locally. Remember it as unsynced
     // so logout warns instead of silently discarding it, and retry once we sign in.
