@@ -79,8 +79,7 @@ export interface LedgerCustomer {
   id: string;
   name: string;
   phone: string;
-  type: "customer" | "supplier";
-  /** positive: credit (customer owes us), negative: debit (we owe supplier) */
+  /** positive: credit (they owe us), negative: debit (we owe them) */
   balance: number;
   history: LedgerEntry[];
   description?: string;

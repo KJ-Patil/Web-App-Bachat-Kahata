@@ -213,19 +213,10 @@ export default function CustomerLedgerPage({
           className="flex items-center gap-2 text-xs font-bold text-foreground-secondary hover:text-primary transition-all cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
-          Customer Notebooks
+          Notebook Ledger
         </Link>
 
         <div className="flex items-center gap-2">
-          <span
-            className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-md ${
-              customer.type === "customer"
-                ? "bg-primary-lighter text-primary"
-                : "bg-brand-light text-brand"
-            }`}
-          >
-            {customer.type}
-          </span>
           <span className="text-[10px] font-bold text-foreground-muted flex items-center gap-1">
             <Hash className="w-3 h-3" />
             {customer.id}

@@ -60,7 +60,8 @@ export default function LedgerPage() {
     return match ? match.iso2 : "IN";
   });
   const [phoneError, setPhoneError] = useState<string | null>(null);
-  const [newType, setNewType] = useState<"customer" | "supplier">("customer");
+  // Direction of the opening balance: "get" = they owe us, "give" = we owe them.
+  const [newDirection, setNewDirection] = useState<"get" | "give">("get");
   const [initialBalance, setInitialBalance] = useState("");
   const [newDescription, setNewDescription] = useState("");
 
@@ -78,7 +79,7 @@ export default function LedgerPage() {
 
     const numBal = parseFloat(initialBalance) || 0;
     const finalBalance =
-      newType === "supplier" ? -Math.abs(numBal) : Math.abs(numBal);
+      newDirection === "give" ? -Math.abs(numBal) : Math.abs(numBal);
 
     const name = newName;
     let history: LedgerEntry[] = [];
@@ -109,7 +110,6 @@ export default function LedgerPage() {
       id: generateId(),
       name,
       phone: toFullNumber(newCountry, newPhone), // e.g. "+919876543210"
-      type: newType,
       balance: finalBalance,
       history,
       // Only attach description when provided — Firestore's setDoc() rejects
@@ -123,7 +123,7 @@ export default function LedgerPage() {
     setNewName("");
     setNewPhone("");
     setPhoneError(null);
-    setNewType("customer");
+    setNewDirection("get");
     setInitialBalance("");
     setNewDescription("");
     setIsAddOpen(false);
@@ -218,7 +218,7 @@ export default function LedgerPage() {
             Notebook Ledger
           </h1>
           <p className="text-sm font-medium text-foreground-muted">
-            Track customer credits and supplier debts bookkeeping.
+            Track credits and debts across your account books.
           </p>
         </div>
 
@@ -427,19 +427,8 @@ export default function LedgerPage() {
                     </div>
                   </Link>
 
-                  {/* Right Block: Type Badge + Balance + WhatsApp + Navigate */}
+                  {/* Right Block: Balance + WhatsApp + Navigate */}
                   <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0 border-t sm:border-0 pt-3 sm:pt-0 border-border">
-                    {/* Account type indicator badge */}
-                    <span
-                      className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-md ${
-                        c.type === "customer"
-                          ? "bg-primary-lighter text-primary"
-                          : "bg-brand-light text-brand"
-                      }`}
-                    >
-                      {c.type}
-                    </span>
-
                     {/* Dynamic balances indicators */}
                     <div className="text-right space-y-0.5 min-w-[80px]">
                       <span
@@ -507,31 +496,31 @@ export default function LedgerPage() {
 
             {/* Form */}
             <form onSubmit={handleAddAccount} className="p-6 space-y-4">
-              {/* Type Switcher Segment (Customer vs Supplier) */}
+              {/* Opening balance direction (who owes whom) */}
               <div className="grid grid-cols-2 gap-2 p-1 bg-secondary rounded-xl">
                 <button
                   type="button"
-                  onClick={() => setNewType("customer")}
+                  onClick={() => setNewDirection("get")}
                   className={`py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                    newType === "customer"
+                    newDirection === "get"
                       ? "bg-card text-primary shadow-sm"
                       : "text-foreground-secondary hover:text-foreground"
                   }`}
                 >
                   <ArrowUpRight className="w-3.5 h-3.5 inline mr-1" />
-                  Customer (Owes me)
+                  You will get
                 </button>
                 <button
                   type="button"
-                  onClick={() => setNewType("supplier")}
+                  onClick={() => setNewDirection("give")}
                   className={`py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                    newType === "supplier"
+                    newDirection === "give"
                       ? "bg-card text-destructive shadow-sm"
                       : "text-foreground-secondary hover:text-foreground"
                   }`}
                 >
                   <ArrowDownRight className="w-3.5 h-3.5 inline mr-1" />
-                  Supplier (I owe)
+                  You will give
                 </button>
               </div>
 

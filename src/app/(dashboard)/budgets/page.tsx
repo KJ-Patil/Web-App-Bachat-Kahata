@@ -6,7 +6,7 @@ import { formatAmount } from "@/core/utils/currencyManager";
 import SetBudgetModal from "@/components/modals/SetBudgetModal";
 import { getBudgets, getTransactions, useTransactions, useBudgets, useMonthlyIncome, useMoneyRuleSplit, setMonthlyIncome, setMoneyRuleSplit } from "@/core/store/dataStore";
 import { computeMoneyRule } from "@/core/insights/moneyRule";
-import { getActiveCategories, resolveCategoryIcon, getIncomeGroupForCategory, resolveBucketForCategory } from "@/core/utils/categories";
+import { getActiveCategories, resolveCategoryIcon, getIncomeGroupForCategory, resolveBucketForCategory, isBucketExcludedCategory } from "@/core/utils/categories";
 import { useTranslation } from "@/i18n/i18nContext";
 import { ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell, Tooltip } from "recharts";
 
@@ -169,10 +169,14 @@ export default function BudgetsPage() {
     const targetMonth = selectedDate.getMonth();
     const targetYear = selectedDate.getFullYear();
 
+    // Mirrors computeMoneyRule's filter, so the itemized lists always add up to
+    // the bucket totals shown above them — notebook-ledger mirrors are money
+    // lent, not spent, so they belong in neither.
     const filtered = transactions.filter((tx) => {
       const txDate = new Date(tx.date);
       return (
         tx.type === "expense" &&
+        !isBucketExcludedCategory(tx.category) &&
         txDate.getMonth() === targetMonth &&
         txDate.getFullYear() === targetYear
       );

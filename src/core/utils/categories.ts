@@ -296,6 +296,26 @@ export function getActiveCategories(type?: "expense" | "income"): CategoryData[]
 }
 
 /**
+ * Categories that sit outside the 50/30/20 rule entirely.
+ *
+ * "Ledger" is the mirror the notebook writes into the transaction store so the
+ * dashboard balance and calendar stay correct. But money handed to a notebook
+ * contact is a receivable, not consumption — and its repayment comes back as
+ * INCOME, which no bucket rollup subtracts. Counting the outflow would strand it
+ * in a bucket forever, even after the book is fully settled.
+ *
+ * Rollups must skip these before calling `resolveBucketForCategory`, which has
+ * no "none" answer and would otherwise default them into needs.
+ */
+export const BUCKET_EXCLUDED_CATEGORIES: readonly string[] = ["Ledger"];
+
+/** True if a category is outside the 50/30/20 rule — see the list above. */
+export function isBucketExcludedCategory(name: string): boolean {
+  if (!name) return false;
+  return BUCKET_EXCLUDED_CATEGORIES.includes(name.trim());
+}
+
+/**
  * The 50/30/20 bucket an expense category counts toward — the app-wide answer,
  * and what every spending rollup should call.
  *

@@ -24,10 +24,10 @@ interface NavigationItem {
 const NAV_ITEMS: NavigationItem[] = [
   { nameKey: "nav.workspace", href: "/home", icon: Home },
   { nameKey: "nav.transactions", href: "/transactions", icon: List },
+  { nameKey: "nav.notebooks", href: "/ledger", icon: BookOpen },
   { nameKey: "nav.calendar", href: "/calendar", icon: CalendarDays },
   { nameKey: "nav.budgets", href: "/budgets", icon: Target },
   { nameKey: "nav.savingsGoals", href: "/savings", icon: PiggyBank },
-  { nameKey: "nav.notebooks", href: "/ledger", icon: BookOpen },
   { nameKey: "nav.billSplitter", href: "/bill-splitter", icon: Receipt },
   { nameKey: "nav.familyWallet", href: "/family-wallet", icon: Users },
   { nameKey: "nav.moodInsights", href: "/mood-insights", icon: BrainCircuit },

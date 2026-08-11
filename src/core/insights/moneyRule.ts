@@ -1,5 +1,8 @@
 import type { Transaction, BudgetMap } from "@/core/store/dataStore";
-import { resolveBucketForCategory } from "@/core/utils/categories";
+import {
+  resolveBucketForCategory,
+  isBucketExcludedCategory,
+} from "@/core/utils/categories";
 
 export interface BucketSummary {
   budget: number;       // Target allocation limit based on income split
@@ -26,9 +29,11 @@ export function computeMoneyRule(
   const targetMonth = targetDate.getMonth();
   const targetYear = targetDate.getFullYear();
 
-  // Filter transactions to this month's expenses
+  // Filter transactions to this month's expenses. Notebook-ledger mirrors are
+  // excluded — lending isn't spending, see BUCKET_EXCLUDED_CATEGORIES.
   const monthlyExpenses = transactions.filter((t) => {
     if (t.type !== "expense") return false;
+    if (isBucketExcludedCategory(t.category)) return false;
     const date = new Date(t.date);
     return date.getMonth() === targetMonth && date.getFullYear() === targetYear;
   });
@@ -55,6 +60,7 @@ export function computeMoneyRule(
   let investmentsAllocated = 0;
 
   for (const [category, budgetLimit] of Object.entries(budgets)) {
+    if (isBucketExcludedCategory(category)) continue;
     const bucket = resolveBucketForCategory(category);
     if (bucket === "needs") {
       needsAllocated += budgetLimit;
