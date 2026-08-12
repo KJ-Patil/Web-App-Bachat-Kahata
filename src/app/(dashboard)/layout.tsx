@@ -5,7 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { Home, Settings, LogOut, Plus, Globe, List, BookOpen, BarChart3, Download, CreditCard, Mic, Users, Activity, SlidersHorizontal, Receipt, BrainCircuit, GraduationCap, Target, PiggyBank, Sparkles, Flame, Repeat, ArrowLeftRight, CalendarDays, PieChart } from "lucide-react";
 import { useLazyCatchUpSync } from "@/core/store/CatchUpSync";
-import { clearLocalCache, flushPendingWrites, hasUnsyncedWrites, isUnlocked, tryAutoUnlock } from "@/core/store/dataStore";
+import { clearLocalCache, flushPendingWrites, hasUnsyncedWrites, isUnlocked, lockDataStore, tryAutoUnlock } from "@/core/store/dataStore";
 import { auth } from "@/config/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import AddTransactionModal from "@/components/modals/AddTransactionModal";
@@ -139,7 +139,7 @@ export default function DashboardLayout({
   useEffect(() => {
     let backgroundTime: number | null = null;
 
-    const handleVisibilityChange = () => {
+    const handleVisibilityChange = async () => {
       if (document.visibilityState === "hidden") {
         backgroundTime = Date.now();
       } else if (document.visibilityState === "visible" && backgroundTime !== null) {
@@ -148,7 +148,19 @@ export default function DashboardLayout({
         if (elapsed > 60000) {
           const storedHash = localStorage.getItem("pin_hash");
           if (storedHash) {
+            backgroundTime = null;
+            // Actually lock, don't just navigate. Routing to /pin-lock alone
+            // left the encryption key and the fully decrypted cache sitting in
+            // memory, so the "lock" protected nothing beyond the view.
+            //
+            // Flush first: lockDataStore() drops the pending-write bookkeeping,
+            // and an auto-lock must not silently turn an unsynced change into
+            // one the user is never warned about. On-disk data stays encrypted
+            // and is re-read when they unlock, so nothing is lost either way.
+            await flushPendingWrites();
+            lockDataStore();
             router.push("/pin-lock");
+            return;
           }
         }
         backgroundTime = null;
@@ -367,27 +379,21 @@ export default function DashboardLayout({
         <main className="flex-1 flex flex-col">{children}</main>
       </div>
 
-      {/* Add Transaction Modal */}
-      <AddTransactionModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        onSuccess={() => {
-          // Trigger hot reloading on workspace page if open
-          if (pathname === "/home" || pathname === "/transactions") {
-            window.location.reload();
-          }
-        }}
+      {/* Add Transaction Modal.
+          No onSuccess reload: the store emits `datastore:change` on every write
+          and both /home and /transactions read through subscribing hooks
+          (useTransactions, useBudgets), so they already re-render live. The
+          reload was not merely redundant — it tore the page down mid-save, which
+          could abandon a Firestore write that had not been acknowledged yet. */}
+      <AddTransactionModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
       />
 
-      {/* Voice Logging Modal */}
+      {/* Voice Logging Modal — same reasoning as above. */}
       <VoiceLoggingModal
         isOpen={isVoiceOpen}
         onClose={() => setIsVoiceOpen(false)}
-        onSuccess={() => {
-          if (pathname === "/home" || pathname === "/transactions") {
-            window.location.reload();
-          }
-        }}
       />
 
       {/* Floating calculator — only inside the authenticated app, not on

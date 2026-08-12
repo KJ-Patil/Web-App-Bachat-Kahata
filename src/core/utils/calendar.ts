@@ -18,6 +18,25 @@ export function toDateKey(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/**
+ * Add months to a date, clamping the day to one that exists in the target month.
+ *
+ * Plain `setMonth` overflows instead of clamping: 31 January + 1 month lands on
+ * 2 or 3 March, not the end of February. Anything anchored to a month-end day —
+ * a subscription renewal, an EMI due date — then skips the short month entirely
+ * and drifts a little further forward every time it is rolled.
+ */
+export function addMonthsClamped(date: Date, months: number): Date {
+  const year = date.getFullYear();
+  const month = date.getMonth() + months;
+  // Day 0 of the following month is the last day of the target month.
+  const lastDayOfTarget = new Date(year, month + 1, 0).getDate();
+  const result = new Date(date);
+  // Setting all three parts together avoids an intermediate overflow.
+  result.setFullYear(year, month, Math.min(date.getDate(), lastDayOfTarget));
+  return result;
+}
+
 /** Whether two dates fall on the same local calendar day. */
 export function isSameDay(a: Date, b: Date): boolean {
   return toDateKey(a) === toDateKey(b);

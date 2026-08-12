@@ -7,6 +7,7 @@
  */
 
 import type { Transaction } from "@/core/store/dataStore";
+import { addMonthsClamped } from "@/core/utils/calendar";
 
 export interface DetectedSubscription {
   /** Stable key derived from the normalized description. */
@@ -92,8 +93,9 @@ export function detectSubscriptions(
     const monthlyAmount = Math.round(median(amounts));
 
     const lastTime = new Date(last.date).getTime();
-    const nextEstimated = new Date(lastTime);
-    nextEstimated.setMonth(nextEstimated.getMonth() + 1);
+    // Clamped so a charge on the 31st estimates end-of-February rather than
+    // overflowing into March.
+    const nextEstimated = addMonthsClamped(new Date(lastTime), 1);
 
     result.push({
       id: key.replace(/\s+/g, "-"),

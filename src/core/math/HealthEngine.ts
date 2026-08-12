@@ -43,15 +43,25 @@ export function computeHealthScore(
   // 3. Vault Accumulation Velocity (20%)
   // Based on total savings vs monthly income (Ideally having 3x monthly income in savings)
   const vaultRatio = monthlyIncome > 0 ? totalSavings / monthlyIncome : 0;
+  // Clamped at BOTH ends: only the ceiling was applied before, so a negative
+  // savings total produced a negative score and pulled the weighted total below
+  // what any single component should be able to take away.
   let vaultVelocityScore = (vaultRatio / 3) * 100;
   if (vaultVelocityScore > 100) vaultVelocityScore = 100;
-  
+  if (vaultVelocityScore < 0) vaultVelocityScore = 0;
+
   // 4. Debt-to-Income load (15%)
-  // Ideal DTI < 30%
-  const dti = monthlyIncome > 0 ? (monthlyDebtPayments / monthlyIncome) * 100 : 0;
-  let debtToIncomeScore = 100;
-  if (dti > 0) {
-    debtToIncomeScore = Math.max(0, 100 - (dti / 50) * 100); // 50% DTI = 0 points
+  // Ideal DTI < 30%; 50% DTI scores zero.
+  let debtToIncomeScore: number;
+  if (monthlyIncome > 0) {
+    const dti = (monthlyDebtPayments / monthlyIncome) * 100;
+    debtToIncomeScore = Math.max(0, 100 - (dti / 50) * 100);
+  } else {
+    // With no income recorded, DTI is undefined. It used to compute as 0% and
+    // therefore award FULL marks — someone with no income and real EMIs scored
+    // a perfect 100 on debt health. Debt that no income can service is the worst
+    // case, not the best; having no debt at all is still genuinely fine.
+    debtToIncomeScore = monthlyDebtPayments > 0 ? 0 : 100;
   }
 
   // 5. Spending Stability (10%)

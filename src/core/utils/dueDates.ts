@@ -8,7 +8,7 @@ import type {
   Transaction,
 } from "@/core/store/dataStore";
 import { detectSubscriptions } from "@/core/insights/subscriptions";
-import { toDateKey } from "@/core/utils/calendar";
+import { toDateKey, addMonthsClamped } from "@/core/utils/calendar";
 import { calcEmi } from "@/core/math/loan";
 
 export interface DueItem {
@@ -17,29 +17,35 @@ export interface DueItem {
   amount: number;
 }
 
-function addMonths(date: Date, months: number): Date {
-  const d = new Date(date);
-  d.setMonth(d.getMonth() + months);
-  return d;
-}
-
 const startOfToday = (): Date => {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d;
 };
 
-/** Upcoming monthly occurrences (from today forward) anchored to a date's day. */
+/**
+ * Upcoming monthly occurrences (from today forward) anchored to a date's day.
+ *
+ * Each occurrence is clamped to a day that exists in its month, so a renewal on
+ * the 31st shows on 28/29 February instead of overflowing into March — and,
+ * crucially, the anchor day is re-derived every month rather than carried
+ * forward, so one short month can't shift the whole rest of the series.
+ */
 function upcomingMonthly(anchor: Date, count: number): Date[] {
   const today = startOfToday();
-  let d = new Date(today.getFullYear(), today.getMonth(), anchor.getDate());
-  if (d < today) d = addMonths(d, 1);
-  const out: Date[] = [];
-  for (let i = 0; i < count; i++) {
-    out.push(new Date(d));
-    d = addMonths(d, 1);
-  }
-  return out;
+  const anchorDay = anchor.getDate();
+
+  const occurrenceIn = (year: number, month: number): Date => {
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    return new Date(year, month, Math.min(anchorDay, lastDay));
+  };
+
+  const year = today.getFullYear();
+  // Start at this month's occurrence, or next month's if it has already passed.
+  const startMonth =
+    occurrenceIn(year, today.getMonth()) < today ? today.getMonth() + 1 : today.getMonth();
+
+  return Array.from({ length: count }, (_, i) => occurrenceIn(year, startMonth + i));
 }
 
 /**
@@ -65,7 +71,9 @@ export function computeDueDates(
     const emi = calcEmi(loan.principal, loan.annualInterestRate, loan.tenureMonths);
     const start = new Date(loan.startDate);
     for (let k = loan.monthsPaid + 1; k <= loan.tenureMonths; k++) {
-      const due = addMonths(start, k);
+      // Always measured from the loan's start date, so a short month clamps
+      // once rather than dragging every later instalment along with it.
+      const due = addMonthsClamped(start, k);
       if (due >= today) push(due, { kind: "emi", label: `${loan.name} EMI`, amount: emi });
     }
   });
