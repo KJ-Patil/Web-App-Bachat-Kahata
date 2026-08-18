@@ -44,9 +44,32 @@ Areas the earlier revision of this doc didn't cover:
 | **Avatar & name sanitization** — URL scheme allowlist, size cap, control/bidi stripping | §5.24 |
 | **Offline cache must stay off-disk** — Firestore in-memory cache, worker never caches cloud data | §4.3 |
 
-Three things were **removed** on the web and must not be ported: the simulated Twilio SMS
-channel (§5.20), the hardcoded support phone number (§8, Help), and the register screen's
-fake avatar upload — now genuinely implemented (§6.3).
+Four things were **removed** on the web and must not be ported: the simulated Twilio SMS
+channel (§5.20), the hardcoded support phone number (§8, Help), the register screen's
+fake avatar upload — now genuinely implemented (§6.3) — and the ledger's
+`customer`/`supplier` **type** field (§3, §8).
+
+### Latest revision — correctness rules that change stored numbers
+These came out of a correctness pass on the web app. Each one is a case where the obvious
+implementation is *wrong in a way that silently corrupts data or reports a figure the user
+never earned*, so port the rule, not just the function:
+
+| Area | Rule | Where |
+|---|---|---|
+| **Loan math** (`LoanMath.kt`, new shared module) | Settle-today balance ≠ sum of remaining instalments. `getTotalDebt` derives from the schedule. | §5.3, §4, §8 |
+| **Base-currency storage** | Every persisted amount is INR; `toBaseAmount` on input, `fromBaseAmount` to pre-fill, `convert=false` for as-typed derivations. Affects 7 sheets/screens. | §5.11, §9 |
+| **Auto-lock actually locks** | Flush → `lockDataStore()` → navigate. Routing alone leaves the key and plaintext cache in memory. | §6.4 |
+| **No cloud writes while locked** | A sensitive-key write before unlock is truncated; flushing it later wipes the account. | §4 |
+| **Legacy-cache cleanup** | Remove four local prefs directly — never via `clearFinancialData()`, which mirrors empties to the cloud on every new device. | §7.1 |
+| **Family Wallet join rule** | `new == old.concat([caller])`, not "caller ∈ new" — which let anyone evict a whole group. Pool total via `increment`. | §4.1 |
+| **Bucket exclusions** | `Ledger` mirrors are receivables, not spending — filter before `resolveBucketForCategory`, in rollups *and* itemized lists. | §5.16, §5.17, §8 |
+| **Month-end recurrence** | `addMonthsClamped`, and re-derive the anchor each month so one short month can't shift the whole series. | §5.18, §5.7 |
+| **Health score edges** | Zero income + debt payments scores **0** on DTI, not 100; vault velocity clamps at both ends. | §5.1 |
+| **Anomaly baseline** | Median over a 180-day window, not an all-time mean (one big spend silenced every later alert). | §5.10 |
+| **SMS direction** | Whole-word match, earliest signal wins, scrub "credit/debit card"; drop `neft`/`payment`. | §5.4 |
+| **Unary minus** | Fold into the operand (`-3`, or `-1 *` for a group) — the `0 -` trick breaks `2*-3` and `8/-2`. | §5.19 |
+| **Catch-up sync** | Skip while locked, re-run on store change, recompute instead of defaulting to a flattering score. | §5.15 |
+| **No refresh-on-save** | Sheets don't trigger a reload; it can abandon an unacknowledged write. | §7.1, §9 |
 
 ---
 
@@ -132,7 +155,7 @@ app/
 │  └─ repository/       # DataRepository.kt        (== dataStore.ts)
 │                       # UserProfileRepository.kt (== userProfile.ts — NOT encrypted, §4.2)
 ├─ domain/              # PURE Kotlin logic (ports of core/)
-│  ├─ math/             # HealthEngine.kt, DebtSimplifier.kt, EmiCalculator.kt,
+│  ├─ math/             # HealthEngine.kt, DebtSimplifier.kt, LoanMath.kt,
 │  │                    # MathEvaluator.kt
 │  ├─ insights/         # SafeToSpend.kt, Subscriptions.kt, Streaks.kt, WhatIf.kt,
 │  │                    # MoneyRule.kt
@@ -196,10 +219,17 @@ Port of `dataStore.ts` interfaces. Annotate as Room `@Entity` where persisted.
 
 @Entity data class LedgerCustomer(
     @PrimaryKey val id: String, val name: String, val phone: String,
-    val type: String,          // "customer" | "supplier"
-    val balance: Double
+    /** positive: they owe us (credit) · negative: we owe them (debit) */
+    val balance: Double,
+    val description: String? = null
     // history stored in a related table or JSON column
 )
+// NOTE: there is no `type` ("customer" | "supplier") field. It was removed — the
+// SIGN OF THE BALANCE already says which way the book runs, and the label went
+// stale the moment a customer's balance went negative. The add-account sheet now
+// asks for the DIRECTION of the opening balance ("You will get" / "You will give")
+// and folds it into the sign. Drop the column; migrate old rows by keeping the
+// balance as-is.
 data class LedgerEntry(
     val id: String, val amount: Double, val type: String, // "gave" | "got"
     val description: String, val date: String, val txId: String? = null
@@ -301,7 +331,7 @@ familyGroups/{code}                    ← group doc: name, memberNames[], membe
 | Create | `set(...)` with **the creator's own uid already in `memberUids`** (the rules require it) |
 | Join by code | `get()` the doc, then `update(memberNames to FieldValue.arrayUnion(name), memberUids to FieldValue.arrayUnion(uid), members to …)` — `arrayUnion` keeps the roster authoritative and idempotent |
 | Live group + expenses | two `addSnapshotListener`s: one on the group doc, one on the `expenses` subcollection |
-| Add expense claim | `add()` into `expenses`, then update the group's rolled-up balance |
+| Add expense claim | `add()` into `expenses`, then roll the group total forward with **`FieldValue.increment(amountInBase)`** — never `poolBalance + amount` read from the current render. A read-then-write starts from a figure captured before the other member's claim landed, so two people filing at the same time both write the same total and the second silently erases the first. `increment` is applied server-side against whatever the value actually is. |
 | **Leave vs delete** | not the same action. A member leaving is `update(memberNames/members)`. The **last** member leaving deletes every `expenses` doc **and then** the group doc — the group ceases to exist for everyone. Say which one is happening in the confirm dialog, because the web does. |
 
 **Security rules — port these verbatim; they are the whole access model.**
@@ -314,7 +344,9 @@ match /familyGroups/{code} {
   allow list:   if false;                  // ← nobody can ENUMERATE other families
   allow create: if request.auth.uid in request.resource.data.memberUids;
   allow update: if request.auth.uid in resource.data.memberUids            // member edits/leaves
-             || request.auth.uid in request.resource.data.memberUids;      // or joins by adding self
+             // Joining: the new roster must be EXACTLY the old one plus the caller.
+             || request.resource.data.memberUids
+                == resource.data.memberUids.concat([request.auth.uid]);
   allow delete: if request.auth.uid in resource.data.memberUids;
   match /expenses/{expenseId} {           // the bulk of the sensitive shared data
     allow read, write: if request.auth.uid in
@@ -327,6 +359,13 @@ looked up (otherwise joining is impossible) but the collection can never be walk
 on **`memberUids`** (real Firebase UIDs), never on `memberNames` — display names are neither
 unique nor trustworthy. A native client hits exactly the same rules, so nothing here is
 web-specific.
+
+**The join branch must compare the whole list, not test membership.** "Is my uid in the
+*new* list" is the obvious rule and it is wrong: it lets any signed-in user who knows a code
+rewrite `memberUids` to `[themselves]`, which both admits a stranger and evicts every real
+member in one write. Requiring `new == old.concat([caller])` allows exactly one append —
+the caller's own — and rejects every removal or substitution. `arrayUnion` on the client
+produces precisely this shape when the caller isn't already a member.
 
 ### 4.2 User profile — `UserProfileRepository.kt` (== `core/store/userProfile.ts`)
 The display name and avatar are the one piece of user data that deliberately **does not go
@@ -438,6 +477,12 @@ suspend fun flushPendingWrites(): Boolean // resend failures, await all; true = 
   confirm dialog before wiping the local cache — otherwise a transaction that never synced is
   lost for good.
 - Log sync failures rather than swallowing them (the web version logs every failed key).
+- **Never queue a cloud write for a sensitive key while the store is locked.** Locked reads
+  serve the empty fallback, so any read-modify-write before unlock produces a truncated
+  value — and flushing that on sign-in would push the emptiness over the cloud copy, wiping
+  the account from a fresh device. Drop the write with a warning instead. Every legitimate
+  write path (Settings purge, backup restore, the entry sheets) runs after unlock, so
+  nothing real is lost.
 
 ### Cloud backup & restore (Firestore `users/{uid}/backups/{id}`)
 ```kotlin
@@ -492,6 +537,13 @@ fun getTotalSaved(goals: List<SavingsGoal>): Double
 fun getTotalDebt(loans: List<LoanRecord>): Double
 ```
 
+**`getTotalDebt` must go through the amortization schedule** (`calcOutstandingPrincipal`,
+§5.3) — one call per loan, summed. Do not reach for an `outstanding` / `balance` / `amount`
+field: `LoanRecord` has none, so a lookup like that silently falls through to `principal`,
+and the reported debt never moves however many EMIs have been paid. The health score reads
+this number, so the error propagates. Derived properly it falls as `monthsPaid` rises and
+reaches 0 when the loan closes.
+
 ### "Hooks" → Flows
 Web hooks `useTransactions`, `useBudgets`, `useLedgerCustomers`, `useLoans`,
 `useSavingsGoals`, `useFamilyGroups`, `useFamilyExpenses`, `useManualSubscriptions`,
@@ -525,6 +577,15 @@ Weights: **Savings Rate 30%, Budget Discipline 25%, Vault Velocity 20%,
 Debt-to-Income 15%, Spending Stability 10%.** `HealthMetrics` holds the five sub-scores
 + `totalScore`. (Logic identical to web.)
 
+Two edge cases decide real scores — get them right:
+- **Vault Velocity is clamped at both ends**, `0…100`. Only the ceiling is obvious; without
+  the floor a negative savings total yields a negative sub-score, and a single component
+  then subtracts more from the weighted total than its own weight.
+- **Debt-to-Income with zero income is 0, not 100** (when there are debt payments; with no
+  debt it is genuinely 100). DTI is `debt / income`, so income 0 makes it undefined — and
+  computing it as "0% DTI" awards full marks, scoring someone with EMIs and no income a
+  perfect 100 on debt health. Debt no income can service is the worst case, not the best.
+
 ### 5.2 `DebtSimplifier.kt` — Bill Splitting
 ```kotlin
 fun calculateBalances(expenses: List<ExpenseEntry>): List<BalanceRecord>   // net per person
@@ -533,13 +594,45 @@ fun simplifyDebts(expenses: List<ExpenseEntry>): List<Settlement>          // gr
 Types: `ExpenseEntry(paidBy, amount, participants, description?)`,
 `BalanceRecord(person, balance)`, `Settlement(from, to, amount)`.
 
-### 5.3 `EmiCalculator.kt` — Loan math (EMI Tracker)
+### 5.3 `LoanMath.kt` — reducing-balance loan math (== `core/math/loan.ts`)
+**The single source of truth for every EMI and debt figure in the app.** Three screens need
+it — the EMI Tracker, the Add-Loan sheet's live preview, and the calendar's due-date
+projection (§5.18) — plus `getTotalDebt` in the repository (§4). Put it in one file and call
+it from all four; on the web the formula was copy-pasted into three places and the debt
+figure was wrong in every one.
+
 ```kotlin
+data class LoanTerms(                      // what the helpers need; LoanRecord satisfies it
+    val principal: Double, val annualInterestRate: Double,
+    val tenureMonths: Int, val monthsPaid: Int
+)
+
 fun calcEmi(principal: Double, annualRate: Double, tenureMonths: Int): Double
-// reducing-balance: P·r(1+r)^n / ((1+r)^n − 1)
+// reducing-balance: P·r(1+r)^n / ((1+r)^n − 1); straight-line P/n at 0% interest
+fun calcOutstandingPrincipal(loan: LoanTerms): Double   // settle-today balance
+fun calcTotalInterest(loan: LoanTerms): Double          // over the full original schedule
+fun calcRemainingPayments(loan: LoanTerms): Double      // Σ instalments still due
 fun calcAmortization(loan: LoanRecord): Amortization
-// -> emi, totalPayable, totalInterest, outstanding, progressPct, completionDate
+// -> emi, totalPayable, totalInterest, remaining, amountPaid,
+//    outstandingBalance, remainingPayments, progressPct, completionDate
 ```
+
+**Outstanding balance ≠ remaining payments — never conflate them.** This is the one thing to
+get right in this module:
+
+| Figure | Formula | Means |
+|---|---|---|
+| `calcOutstandingPrincipal` | `EMI × (1 − (1+r)^−k) / r`, `k` = instalments left | What would **settle the loan today** — the present value of the remaining instalments. Label it "Outstanding" / "Settle-today balance". |
+| `calcRemainingPayments` | `EMI × k` | The **sum of future instalments**, i.e. principal *plus every future interest charge*. Label it "left to pay", never "outstanding". |
+
+`EMI × k` is strictly larger; the gap is the interest avoided by settling early. On a 20-year
+home loan that gap is roughly the entire interest cost, so showing it as "remaining
+principal" overstates the debt enormously — and `getTotalDebt` feeds the health score, so the
+error spreads. Zero-interest and fully-repaid loans short-circuit: at 0% the balance is the
+unpaid share of principal (`principal × k / n`), and `monthsPaid >= tenureMonths` returns 0.
+
+The EMI Tracker shows **both** numbers (settle-today in the summary card, "left to pay" on the
+progress bar) precisely so they can't be mistaken for one another again.
 
 ### 5.4 `SmsParser.kt` — Bank SMS → Transaction
 ```kotlin
@@ -550,6 +643,23 @@ Regex rule sets for **HDFC, SBI, ICICI, Axis, Kotak, UPI (GPay/PhonePe/Paytm/BHI
 generic "Bank Alert" fallback**. `DEBIT_SIGNALS`/`CREDIT_SIGNALS` decide direction;
 `NOISE_PATTERNS` clean the merchant string. Internal: `cleanDescription`, `parseAmount`,
 `detectTypeFromKeywords`. **Fully offline.**
+
+**Direction detection — three rules, all load-bearing.** Used whenever the matched bank
+pattern didn't capture an explicit type word, which is most generic messages. A wrong
+direction files a spend as income, so this is worth porting exactly:
+1. **Whole-word matching** (`\bword\b`), not substring — otherwise "credit" fires inside
+   unrelated text.
+2. **Earliest signal wins** when both a debit and a credit word appear. Bank SMS state the
+   direction up front ("Rs 3200 debited from …") and mention references, rails and offers
+   afterwards. Track the first match index of each set and compare.
+3. **Blank out `\b(credit|debit)\s+card\b` before scanning.** It names the instrument, not
+   the direction — a credit-card spend is an *expense*. Card SMS are among the most common
+   kind, so this alone fixes a large slice of misfiles.
+
+**Keep these words out of the signal sets:** `neft`, `imps`, `rtgs`, `upi` are transfer
+rails used in both directions (`neft` in the credit set booked every NEFT-referenced debit
+as income), and `payment` reads either way ("payment sent" / "payment received"). The
+explicit verbs already cover the cases these were meant to catch.
 - **Android bonus:** with the `RECEIVE_SMS`/`READ_SMS` permission (or **SMS Retriever API**,
   no permission), a `BroadcastReceiver` can auto-feed incoming bank SMS into `parseSmsMessage`
   instead of manual paste. Guard behind explicit user opt-in for Play Store policy.
@@ -580,7 +690,9 @@ fun detectSubscriptions(txs: List<Transaction>, minOccurrences: Int = 2): List<D
 fun summarizeSubscriptions(subs: List<DetectedSubscription>): SubscriptionSummary
 ```
 Group expenses by normalized merchant; require charges across ≥2 distinct months; median
-monthly amount; next charge = +1 month; `possiblyUnused` if no charge in ~45 days.
+monthly amount; next charge = **`addMonthsClamped(last, 1)`** (§5.18 — a charge on the 31st
+must estimate end-of-February, not overflow into March); `possiblyUnused` if no charge in
+~45 days.
 
 ### 5.8 `WhatIf.kt`
 ```kotlin
@@ -601,19 +713,40 @@ Centurion (100 tx). Current streak counts only if it reaches today/yesterday.
 
 ### 5.10 `AnomalyRadar.kt`
 ```kotlin
-fun checkAnomaly(amount: Double, category: String, transactions: List<Transaction>): String?
-// needs >=3 prior same-category expenses; flags if amount > 2.5x rolling average
+fun checkAnomaly(
+    amount: Double, category: String,
+    transactions: List<Transaction>,        // typed — not a raw/untyped list
+    now: Instant = Instant.now()            // injectable, for tests
+): String?
+// baseline = MEDIAN of same-category expenses in the last 180 days;
+// needs >= 3 such samples; flags if amount > 2.5 × that median
 ```
+- **Median, not mean.** A single large past spend permanently lifts an average and then
+  suppresses every later alert — the failure direction that matters, since this is a warning
+  that goes quiet exactly when it shouldn't. A median barely moves for one outlier, which is
+  the point: the function exists to detect outliers, so its baseline must be robust to them.
+- **180-day window** (`BASELINE_WINDOW_DAYS`): "usual" means recent habit, not something from
+  two years ago. Filter by date before computing.
+- Guard the inputs: non-finite or non-positive `amount` → null, unparseable dates skipped,
+  fewer than `MIN_SAMPLES` (3) surviving samples → null, median ≤ 0 → null.
+- **The transaction list must not already contain the spend being checked**, or it inflates
+  its own baseline. Call this *before* `addTransaction`.
 
 ### 5.11 `CurrencyManager.kt`
 ```kotlin
 val PRESET_CURRENCIES: List<CurrencyInfo>   // INR, USD, EUR, AUD (exactly 4)
+const val BASE_CURRENCY = "INR"
 fun formatAmount(amount: Double, code: String = "INR", includeSymbol: Boolean = true,
-                 decimalPlaces: Int? = null, useIndianLayoutForINR: Boolean = true): String
+                 decimalPlaces: Int? = null, useIndianLayoutForINR: Boolean = true,
+                 convert: Boolean = true): String
 fun getCurrencySymbol(code: String): String
 fun getCurrencyInfo(code: String): CurrencyInfo
 fun getAllCurrencies(): List<CurrencyInfo>
 fun convertAmount(amount: Double, fromRate: Double, toRate: Double): Double
+
+// Base-currency conversion — the input/output pair around every amount field
+fun toBaseAmount(amount: Double, code: String = BASE_CURRENCY): Double    // typed → stored
+fun fromBaseAmount(amount: Double, code: String = BASE_CURRENCY): Double  // stored → field
 
 // Live FX (base = INR)
 fun getExchangeRate(code: String): Double                  // synchronous; cache → static fallback → 1
@@ -621,6 +754,29 @@ suspend fun refreshExchangeRates(force: Boolean = false)   // no-op if cache < 1
 ```
 INR uses lakh/crore grouping (Android: `NumberFormat.getInstance(Locale("en","IN"))` or the
 manual grouping fallback). Returns `"—"` for NaN/Infinity.
+
+#### Everything is stored in the base currency — convert at both edges
+**Invariant: every persisted amount is INR.** The active currency is a *display* setting.
+`formatAmount` already converts base → display on the way out, so the input side needs the
+exact inverse or values corrode:
+
+> a user with USD active types `100` into a field labelled `$`, 100 is stored as ₹100, and it
+> reads back as `$1.20` — and shrinks again every time the display currency changes.
+
+So **every amount the user types goes through `toBaseAmount(typed, activeCurrency)` before
+it is stored**, and **every amount pre-filled into an editable field goes through
+`fromBaseAmount`** (a bare number in the active currency — same conversion as `formatAmount`,
+without the symbol and grouping). Screens/sheets that must do this: Add Transaction (amount,
+plus `originalAmount` and `discountAmount`), Add Goal (target), Log Deposit, Set Budget (in
+*and* out, and the field label + symbol follow the active currency — not a hardcoded `₹`),
+Add Loan (principal), Ledger entries (gave/got, which also drive the mirrored transaction),
+and the Family Wallet spending limit (out on open, in on save — otherwise the limit is
+compared against a pool balance in a different unit).
+
+**`convert = false` is for figures derived from a value as typed.** The Add-Loan preview
+computes EMI/total-payable/interest from the principal the user just entered, which is
+already in the display currency; formatting it normally would convert a second time. Use the
+flag there, and only there — stored amounts always take the default.
 
 **Rates:** `refreshExchangeRates` fetches `https://open.er-api.com/v6/latest/INR` and caches
 `{base, rates, ts}` in DataStore with a **12-hour TTL**; call it once per app start. Every
@@ -665,6 +821,21 @@ health score / insights. On Android, schedule with a **`PeriodicWorkRequest`** (
 that calls this, instead of running on layout mount. Internal: `calculateFinancialHealthScore`
 (40 + savingsRate×0.6, clamped), `generateWeeklyInsights`.
 
+Three rules keep it from caching fiction for a week:
+- **Bail out when the store is locked** (`if (!isUnlocked()) return notExecuted`). Locked
+  reads return empty fallbacks, so the score computes as the no-income floor and then gets
+  cached — hiding the real number long after the user signs in. The worker/observer re-runs
+  on unlock.
+- **Re-run on every store change, not once at mount.** At mount the store is normally still
+  locked (no PIN yet), so the first run is a deliberate no-op; unlocking is what makes the
+  data readable. On Android this falls out of collecting the repository `Flow` — the web
+  needs an explicit `datastore:change` listener because it has no equivalent.
+- **Fall back to a fresh computation, never to invented numbers.** A missing or corrupt
+  cache recomputes the score and the insight list. Do not seed a default like `75` plus two
+  congratulatory sentences — that reports a health score the user never earned. Parse the
+  cached insights defensively too: this runs during dashboard mount, so an exception here
+  takes down the whole screen instead of degrading to a recomputed list.
+
 ### 5.16 `BucketConfig.kt` + `Categories.kt` — the 50/30/20 category system
 The foundation the Budgeting Rule computes on, and the single source of truth for every
 category picker in the app.
@@ -678,7 +849,9 @@ val SAVINGS_DEPOSIT_CATEGORY: Map<BucketType, String> // needs→"Savings (Needs
 val BUCKET_LABELS: Map<BucketType, String>            // "Needs" | "Wants" | "Investments"
 
 // Categories.kt
-val DEFAULT_CATEGORIES: List<CategoryData>            // 9-item seed set (5 expense + 4 income)
+val DEFAULT_CATEGORIES: List<CategoryData>            // 10-item seed set (6 expense + 4 income)
+val BUCKET_EXCLUDED_CATEGORIES: List<String>          // ["Ledger"] — outside 50/30/20 entirely
+fun isBucketExcludedCategory(name: String): Boolean   // trimmed name test
 val EXTRA_CATEGORY_GROUPS: List<ExtraCategoryGroup>   // expense "Other", grouped by bucket (35 entries)
 val INCOME_EXTRA_CATEGORY_GROUPS: List<IncomeCategoryGroup> // income "Other": Earned / Investment / Passive & Other
 fun isExtraCategory(name: String): Boolean
@@ -705,6 +878,20 @@ Categories are identified **by `name`** throughout (`Transaction.category`, budg
 the `id` is internal. Buckets are **expense-only**; income is grouped by *source* instead
 (Earned / Investment / Passive & Other), which is what powers the Investment-Returns rollup.
 
+The seed set includes **`Food`** (needs, `Utensils` icon) alongside `Groceries` — eating in
+general is a need; `Dining Out` stays a want.
+
+**Some categories sit outside the rule entirely — filter before resolving.**
+`resolveBucketForCategory` has no "none" answer, so anything passed to it lands in a bucket,
+defaulting to *needs*. Every rollup must call `isBucketExcludedCategory` first and skip.
+Today the list is just **`Ledger`**, the mirror the notebook writes into the transaction
+store to keep the dashboard balance and calendar correct: money handed to a notebook contact
+is a **receivable, not consumption**, and its repayment comes back as *income*, which no
+bucket rollup subtracts. Counting the outflow would strand it in a bucket forever, even
+after the book is fully settled. Apply the filter in **both** places or the numbers stop
+agreeing: the bucket totals (`computeMoneyRule`, over transactions *and* over per-category
+budget limits) and the itemized expense lists the Budgets screen renders underneath them.
+
 ### 5.17 `MoneyRule.kt` — Budgeting Rule engine (50/30/20, user-adjustable)
 ```kotlin
 fun computeMoneyRule(
@@ -721,7 +908,9 @@ data class BucketSummary(
     val allocatedBudget: Double  // Σ per-category budgets that fall in this bucket
 )
 ```
-- Filters to the **target month's expenses**, buckets each via `resolveBucketForCategory`.
+- Filters to the **target month's expenses**, skips `isBucketExcludedCategory` rows (§5.16),
+  buckets the rest via `resolveBucketForCategory`. The same skip applies when rolling up
+  per-category budget limits.
 - Also rolls up per-category budget limits per bucket (`allocatedBudget`) so the UI can warn
   when category limits **exceed** the bucket's rule limit.
 - Status: `> 100%` (or budget 0 with spend) → **Over Budget**; `>= 90%` → **Near Limit**;
@@ -735,6 +924,7 @@ val WEEKDAY_LABELS: List<String>   // M T W T F S S — Monday-first
 val MONTH_LABELS: List<String>
 fun toDateKey(d: LocalDate): String                 // "yyyy-MM-dd"; grouping key AND nav arg
 fun isSameDay(a: LocalDate, b: LocalDate): Boolean
+fun addMonthsClamped(date: LocalDate, months: Int): LocalDate  // day clamped to the target month
 fun parseDateKey(key: String?): LocalDate?          // null when malformed — guards the route
 fun buildMonthGrid(year: Int, month: Int): List<LocalDate>  // 42 cells, Monday-first, with spill-over
 
@@ -745,9 +935,27 @@ fun computeDueDates(
 ): Map<String, List<DueItem>>       // dayKey → items, ~12 months ahead
 ```
 - **EMIs:** each loan's remaining **future** payments (`monthsPaid + 1 … tenureMonths`),
-  anchored to `startDate`, amount from the same reducing-balance `calcEmi`.
+  anchored to `startDate`, amount from the shared `calcEmi` in `LoanMath.kt` (§5.3) — not a
+  local copy of the formula.
 - **Subscriptions:** next 12 monthly charges for manual subs (anchored to `createdAt`) and
   auto-detected ones (`detectSubscriptions`, skipping `possiblyUnused`).
+
+**Month-end dates must clamp, and the anchor must be re-derived every month.** Two related
+bugs, both of which drift a recurring series forward:
+- A naive "add one month" *overflows* rather than clamping — 31 January + 1 month lands on
+  2 or 3 March, so anything anchored to a month-end day skips the short month entirely.
+  `addMonthsClamped` computes the last valid day of the target month and takes
+  `min(anchorDay, lastDay)`, setting year/month/day together to avoid an intermediate
+  overflow. Java's `LocalDate.plusMonths` already clamps this way — the helper exists so the
+  behavior is explicit and identical to the web's.
+- Worse, **rolling each occurrence off the previous one** makes a single short month shift
+  the entire rest of the series (a 31st anchor clamped to 28 Feb then produces the 28th
+  forever). Always recompute from the original anchor day: for occurrence *i*, take the
+  anchor day clamped into that month. EMIs are likewise measured from `startDate` every
+  time, so a short month clamps once instead of dragging every later instalment with it.
+
+`detectSubscriptions` uses the same clamped step for its `nextEstimated` date (§5.7), so a
+charge on the 31st estimates end-of-February rather than overflowing into March.
 - `buildMonthGrid` converts JS/Java Sunday-first to Monday-first via `(dayOfWeek + 6) % 7`.
 - Java's `DayOfWeek` is already Monday=1 — do the conversion once and keep the grid identical
   to the web's, or the columns shift.
@@ -757,7 +965,17 @@ fun computeDueDates(
 fun evaluateArithmetic(expr: String): Double   // throws on invalid input
 ```
 Shunting-yard: tokenize → RPN → evaluate. Supports `+ - * /`, decimals, parentheses, and
-**unary minus** (a `-` at index 0 or right after an operator/`(` gets a `0` pushed before it).
+**unary minus**.
+
+**Handle the unary minus by folding it into its operand — not by rewriting it as `0 -`.**
+The `0 -` trick only works next to `+` and `−`, which share precedence with the subtraction
+it becomes: `2*-3` turns into `2*0-3` = −3 instead of −6, and `8/-2` turns into `8/0-2`,
+which throws "Division by zero". Instead, track whether an **operand is expected** (true at
+the start, just after `(`, and just after any operator — exactly where `-` means "negative"):
+- `-` before a digit → emit the number literal negated (`-3` as one token);
+- `-` before `(` → emit `-1` and `*`, so it binds to the whole group rather than its first
+  term;
+- a leading `+` is a no-op.
 Rejects any character outside `[0-9+\-*/().]`; throws on mismatched parentheses, division by
 zero, and malformed structure.
 
@@ -922,7 +1140,21 @@ both through `sanitizeDisplayName` / `sanitizeAvatarUrl` (§5.24) before either 
 - Biometric: **`androidx.biometric.BiometricPrompt`** with `BiometricManager.canAuthenticate(BIOMETRIC_STRONG)`
   capability check (replaces WebAuthn). On success + PIN exists → Home. "Switch Account" clears session.
 - **Auto-lock:** in `Application`/lifecycle observer (`ProcessLifecycleOwner`), if the app is
-  backgrounded >60s and a PIN is set, route to PinLock on return (== web Page Visibility API).
+  backgrounded >60s and a PIN is set, lock on return (== web Page Visibility API).
+
+  **Actually lock — navigating to PinLock is not locking.** Showing the lock screen while the
+  encryption key and the fully decrypted cache sit in memory protects the *view* and nothing
+  else. The sequence is:
+
+  1. `flushPendingWrites()` **first** — `lockDataStore()` drops the pending-write bookkeeping,
+     and an auto-lock must not silently turn an unsynced change into one the user is never
+     warned about;
+  2. `lockDataStore()` — drop the key and the plaintext cache;
+  3. *then* navigate to PinLock.
+
+  Nothing is lost either way: on-disk data stays encrypted and is re-read at unlock. Clear
+  the "backgrounded at" timestamp before the suspend call so a re-entrant visibility change
+  can't fire the sequence twice.
 
 ### 6.5 Session keys (DataStore, not synced)
 `user_session` (a **cache** of `name`, `email`, `avatarUrl` — the durable copy is the Firestore
@@ -967,13 +1199,40 @@ than waved through.
 **Bottom nav (5):** Home, Transactions, Notebooks (Ledger), Analytics, Settings —
 plus a center **FAB** (Add Transaction) and a **voice mic** action.
 
-**Full route list (23):** `home`, `transactions`, `calendar`, `budgets`, `savings`, `ledger`,
-`bill-splitter`, `family-wallet`, `mood-insights`, `health-score`, `cibil-simulator`,
-`academy`, `analytics`, `comparison`, `subscriptions`, `what-if`, `streaks`,
-`emi-tracker`, `export`, `notifications`, `help`, `settings`
+**Full route list (23), in menu order:** `home`, `transactions`, **`ledger`**, `calendar`,
+`budgets`, `savings`, `bill-splitter`, `family-wallet`, `mood-insights`, `health-score`,
+`cibil-simulator`, `academy`, `analytics`, `comparison`, `subscriptions`, `what-if`,
+`streaks`, `emi-tracker`, `export`, `notifications`, `help`, `settings`
 (+ nested: `ledger/{id}`, `family-wallet/{groupId}`, `calendar/{date}`,
 `settings/categories`, `settings/sms-gateway`, `settings/about`).
 Use typed nav args for `{id}` / `{groupId}` / `{date}` (`yyyy-MM-dd`).
+**Notebooks (Ledger) sits third**, right after Transactions — it is a primary surface in the
+bottom nav, so keep it near the top of the drawer/rail too rather than below the planning
+screens.
+
+### 7.1 The authenticated shell — what the layout owns
+Everything below belongs to the shell composable that wraps the dashboard graph, not to any
+one screen.
+
+- **Guard on signed-in *and* unlocked** (§4). Also mount the floating calculator, the
+  Add-Transaction sheet and the Voice sheet here — inside the authenticated shell only, never
+  over Login/Register.
+- **Do not refresh the screen after a sheet saves.** The web shell used to force a full page
+  reload when Add-Transaction or Voice succeeded on `/home` or `/transactions`. It was not
+  merely redundant — every screen reads through subscribing hooks and already re-renders on
+  write — it tore the page down mid-save and could abandon a Firestore write that had not
+  been acknowledged. On Android the equivalent mistake is popping/recreating the destination
+  or invalidating the ViewModel on success: don't. The `Flow` emission is the refresh.
+- **Legacy-cache cleanup runs once per device — and must touch local keys only.** An earlier
+  build seeded fabricated balances; the cleanup removes their derived caches
+  (`total_income`, `total_savings`, `financial_health_score`, `weekly_insights`) and sets
+  `legacy_seed_cleared_v1`. Remove those prefs **directly**. Do **not** route it through
+  `clearFinancialData()`: that writes empty defaults through the data store, which mirrors
+  them to Firestore — and since the "already ran" flag is local, the purge fires on every
+  device the app has not run on before, exactly where there is no legacy data and the cloud
+  holds the user's only copy. That combination wipes the account on a new install. The four
+  keys are local-only derived caches, so deleting them does the intended job with no cloud
+  write at all.
 
 ---
 
@@ -989,15 +1248,15 @@ Use typed nav args for `{id}` / `{groupId}` / `{date}` (`yyyy-MM-dd`).
 | **Transactions** | `TransactionsScreen` | Live list (`Flow`), search, type tabs (all/income/expense), KPI totals for the *currently filtered* rows, grouped Today/Yesterday/Previous Weeks, inline edit + delete-confirm, add via bottom sheet. Editing an amount inline **clears `originalAmount`/`discountAmount`** — the stored discount breakdown no longer describes the new number. |
 | **Analytics** | `AnalyticsScreen` | KPI cards with MoM % badges, income-vs-expense area chart (6 mo), category pie + legend, grouped bar (this vs last), top-5 category bars. |
 | **Comparison** | `ComparisonScreen` | Month-vs-month per-category deltas, grouped bar (top 8); expense decrease=green, increase=red. |
-| **Budgets** | `BudgetsScreen` | **Three tabs** over a shared month switcher — see §8.1. |
+| **Budgets** | `BudgetsScreen` | **Three tabs** over a shared month switcher — see §8.1. The itemized per-bucket expense lists apply the same `isBucketExcludedCategory` filter as `computeMoneyRule`, so the items always add up to the bucket totals above them. |
 | **Calendar** | `CalendarScreen` | Month grid (`buildMonthGrid`), per-day income/expense/Ledger/Due markers, red expense heatmap tint (`0.06 + spend/maxSpend × 0.22`), Today button; tap a day → `calendar/{dateKey}`. Ledger-mirrored transactions are excluded from the transaction totals so they aren't double-counted. |
 | **Day Detail** | `CalendarDayScreen` | nav arg `date`; validated via `parseDateKey`. Due/EMI items, transactions, and notebook-ledger entries for that day, with search and KPI totals where **Income = income txs + ledger "got"** and **Expense = expense txs + ledger "gave"**. |
 | **Savings** | `SavingsScreen` | Goal cards with radial % ring (Compose `Canvas`/arc), required monthly deposit, **bucket tag chip** (Needs/Wants/Investments), AddGoal + LogDeposit sheets. |
-| **Ledger (Khata)** | `LedgerScreen` | Receivable/Payable/Net summary, filter tabs + search, add customer/supplier (`PhoneNumberInput` + **opening balance**), per-row balance state, quick reminder trigger → `FlashReminderSheet`. |
-| **Ledger Detail** | `LedgerDetailScreen` | nav arg `id`; balance card, You-Gave/You-Got entry (mirrors into transactions, category `Ledger`), running history with per-entry delete (removes linked `txId`), WhatsApp quick action + reminder composer. |
+| **Ledger (Khata)** | `LedgerScreen` | Titled **Notebook Ledger** — "track credits and debts across your account books". Receivable/Payable/Net summary, filter tabs + search, add account (`PhoneNumberInput` + **opening balance** + a two-way direction toggle, **"You will get" / "You will give"**, which sets the sign), per-row balance state, quick reminder trigger → `FlashReminderSheet`. **No customer/supplier type badge** — the balance sign is the truth, and a fixed label went stale as soon as the balance crossed zero. |
+| **Ledger Detail** | `LedgerDetailScreen` | nav arg `id`; balance card, You-Gave/You-Got entry (amount typed in the active currency → `toBaseAmount` before it touches the balance *or* the mirrored transaction), mirrors into transactions under category `Ledger` (excluded from bucket rollups, §5.16), running history with per-entry delete (removes linked `txId`), WhatsApp quick action + reminder composer. Back-link reads "Notebook Ledger"; no type badge in the header. |
 | **Family Wallet** | `FamilyWalletScreen` | Join by 6-digit code or create a group (random code, checked for collision); group cards → detail; **leave/delete confirm** that states which is happening (§4.1). Backed by the shared `familyGroups` collection, not the per-user mirror. |
-| **Family Group Detail** | `FamilyGroupScreen` | nav arg `groupId`; **live** group doc + expenses listeners, member roster, pool balance vs optional spending limit, add expense claim, set-limit overlay, leave/delete. |
-| **EMI Tracker** | `EmiTrackerScreen` | `useLoans` flow, summary cards, per-loan card with amortization (`calcEmi`/`calcAmortization`), expandable breakdown, delete-confirm, AddLoan sheet. |
+| **Family Group Detail** | `FamilyGroupScreen` | nav arg `groupId`; **live** group doc + expenses listeners, member roster, pool balance vs optional spending limit, add expense claim (rolls the group total with `increment`, §4.1), set-limit overlay (`fromBaseAmount` to fill the field, `toBaseAmount` to save), leave/delete. |
+| **EMI Tracker** | `EmiTrackerScreen` | `useLoans` flow, summary cards, per-loan card with amortization (`calcEmi`/`calcAmortization` from the shared `LoanMath.kt`, §5.3), expandable breakdown, delete-confirm, AddLoan sheet. Shows **two distinct debt figures**: "Total Outstanding / Settle-today balance" (`calcOutstandingPrincipal`) in the summary, and "… left to pay" (`calcRemainingPayments`) on the progress bar. |
 | **Health Score** | `HealthScoreScreen` | Aggregate real ledger → `computeHealthScore`; semicircle gauge (`Canvas` arc, color by band), per-metric breakdown rows, recommendations. |
 | **CIBIL Simulator** | `CibilSimulatorScreen` | Sliders (Payment 35%, Utilization 30%, Age 15%, Mix 10%, Inquiries 10%), score 300–900, animated spring counter via `Animatable`. Educational only. |
 | **Academy** | `AcademyScreen` | Load lessons from bundled `assets/lessons/lessons.json` (Moshi/kotlinx.serialization), lesson→quiz→results, 100% unlocks reward badge, progress in DataStore. |
@@ -1029,14 +1288,19 @@ All three share the month navigator, so `‹ ›` re-computes whichever tab is o
 
 Web modals → **Compose `ModalBottomSheet`** (Material 3) or full-screen dialogs.
 
+> **Every sheet with an amount field converts currency at both edges** (§5.11): read the
+> active currency, `toBaseAmount` on save, `fromBaseAmount` to pre-fill. Marked ⇄ below.
+> And none of them asks the caller to refresh on success — the store emits, the screen
+> re-renders (§7.1).
+
 | Web component | Android composable | Behavior |
 |---|---|---|
-| `AddTransactionModal` | `AddTransactionSheet` | Expense/Income toggle, category grid, **"Other" expander** (expense: grouped by bucket; income: grouped by source), **discount field** (% or flat, clamped, live "you saved" line), amount + description → `addTransaction`; on expense ≥80% of a budget, push a notification + inline warning; success animation. |
-| `AddGoalModal` | `AddGoalSheet` | Name, target, deadline (min tomorrow), **"Counts As" bucket picker** (defaults Investments) → new goal (current 0). |
+| `AddTransactionModal` ⇄ | `AddTransactionSheet` | Expense/Income toggle, category grid, **"Other" expander** (expense: grouped by bucket; income: grouped by source), **discount field** (% or flat, clamped, live "you saved" line), amount + description → `addTransaction`; on expense ≥80% of a budget, push a notification + inline warning; success animation. The live breakdown is shown in the typed currency; `amount`, `originalAmount` **and** `discountAmount` are all converted to base before saving. |
+| `AddGoalModal` ⇄ | `AddGoalSheet` | Name, target (converted to base), deadline (min tomorrow), **"Counts As" bucket picker** (defaults Investments) → new goal (current 0). |
 | `AddCategoryModal` | `AddCategorySheet` | Type toggle, name, 8 colors, 12 icons, **bucket picker (expense only)** → `CategoryData`. |
-| `AddLoanModal` | `AddLoanSheet` | Name, lender presets, principal, rate, tenure, monthsPaid, startDate; live amortization preview. |
-| `LogDepositModal` | `LogDepositSheet` | Amount → increment goal `current` + log an expense **under the goal's bucket category** (`SAVINGS_DEPOSIT_CATEGORY[goal.bucket ?: investments]`), so a phone fund counts as a *want*, not an investment. |
-| `SetBudgetModal` | `SetBudgetSheet` | Category chips + monthly limit → `setBudgets`. |
+| `AddLoanModal` ⇄ | `AddLoanSheet` | Name, lender presets, principal (→ base on save), rate, tenure, monthsPaid, startDate; live amortization preview showing Monthly EMI / Total Payable / Total Interest / **Outstanding Now** (`calcOutstandingPrincipal`, §5.3). The preview is derived from the principal *as typed*, so it formats with **`convert = false`** — converting again would double-apply the rate. |
+| `LogDepositModal` ⇄ | `LogDepositSheet` | Amount (→ base) → increment goal `current` + log an expense **under the goal's bucket category** (`SAVINGS_DEPOSIT_CATEGORY[goal.bucket ?: investments]`), so a phone fund counts as a *want*, not an investment. |
+| `SetBudgetModal` ⇄ | `SetBudgetSheet` | Category chips + monthly limit → `setBudgets`. Converts **both ways** — the stored base limit fills the field via `fromBaseAmount`, the typed value saves via `toBaseAmount` — and the label and prefix show the **active** currency/symbol, not a hardcoded `₹`. |
 | `CurrencyPickerSheet` | `CurrencyPickerSheet` | Searchable `PRESET_CURRENCIES`; writes `active_currency`. |
 | `LanguagePickerSheet` | `LanguagePickerSheet` | `INDIAN_LANGUAGES` with endonyms; writes `active_language` (Android: `setApplicationLocales`). |
 | `MoneyRuleCard` | `MoneyRuleCard` | Home-screen summary: three bucket bars (spent / limit, % and status badge) from `computeMoneyRule`; when income is 0, an empty state with a **Set Income** action deep-linking to Budgets. |
