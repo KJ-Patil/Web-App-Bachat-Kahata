@@ -250,6 +250,12 @@ export default function LoginPage() {
                 <label htmlFor="password" className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
                   {t('login.password')}
                 </label>
+                <Link
+                  href="/forgot-password"
+                  className="text-xs font-semibold text-link hover:text-link-hover"
+                >
+                  {t('login.forgotPassword')}
+                </Link>
               </div>
               <div className="relative">
                 <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-icon-muted">
@@ -437,6 +443,15 @@ export default function LoginPage() {
                 </button>
               </form>
             )}
+
+            {/* Phone accounts have no password, but the number itself can be
+                the thing they've lost access to — offer recovery either way. */}
+            <Link
+              href="/forgot-password"
+              className="block text-center text-sm font-semibold text-link hover:text-link-hover"
+            >
+              {t('login.recoverAccount')}
+            </Link>
           </div>
           )}
 
