@@ -16,6 +16,7 @@ import {
   reauthenticateWithPopup,
   onAuthStateChanged,
   updateProfile,
+  sendPasswordResetEmail,
   type User as FirebaseUser,
 } from "firebase/auth";
 import {
@@ -259,6 +260,16 @@ export default function SettingsPage() {
       toast.success("Profile photo removed.");
     } else {
       toast.warning("Photo removed on this device — could not sync to your account.");
+    }
+  };
+
+  const handleSendPasswordReset = async () => {
+    if (!userEmail) return;
+    try {
+      await sendPasswordResetEmail(auth, userEmail);
+      toast.success("Password reset link sent to your email!");
+    } catch (err) {
+      toast.error("Failed to send password reset email.");
     }
   };
 
@@ -525,6 +536,24 @@ export default function SettingsPage() {
           </h3>
           <div className="bg-card border border-border-strong rounded-2xl overflow-hidden shadow-sm">
             
+            {fbUser?.providerData.some(p => p.providerId === 'password') && (
+              <button 
+                onClick={handleSendPasswordReset}
+                className="w-full flex items-center justify-between p-4 border-b border-border hover:bg-secondary transition-colors text-left group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center text-icon-default">
+                    <Lock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-sm text-foreground block">Reset Password</span>
+                    <span className="text-[10px] font-semibold text-foreground-muted block">Send a password reset link to {maskEmail(userEmail)}</span>
+                  </div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-icon-muted" />
+              </button>
+            )}
+
             <button className="w-full flex items-center justify-between p-4 hover:bg-secondary transition-colors text-left group">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center text-icon-default group-hover:text-error transition-colors">
